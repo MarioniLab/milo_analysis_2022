@@ -1,0 +1,9 @@
+Epiblast
+Caudal_neurectoderm
+Caudal_Mesoderm
+Haematoendothelial_progenitors
+Blood_progenitors_2
+Erythroid3
+Intermediate_mesoderm
+Rostral_neurectoderm
+ExE_endoderm

@@ -1,0 +1,9 @@
+Def._endoderm
+Caudal_neurectoderm
+Endothelium
+Gut
+Blood_progenitors_2
+Erythroid3
+Surface_ectoderm
+Paraxial_mesoderm
+ExE_endoderm

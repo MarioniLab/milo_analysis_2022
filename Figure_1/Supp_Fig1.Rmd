@@ -1,0 +1,182 @@
+Use simulated trajectory data:
+
+```{r}
+library(ggplot2)
+library(SingleCellExperiment)
+library(tidyverse)
+library(igraph)
+library(miloR)
+require(microbenchmark)
+library(scater)
+library(dplyr)
+library(patchwork)
+library(magrittr)
+library(Matrix)
+library(MouseGastrulationData)
+library(BiocNeighbors)
+```
+
+
+```{r warning=FALSE, message=FALSE}
+# mouse gatrulation data from MouseGastrulationData package, as in vignette
+select_samples <- c(2,  3, 6, 15,
+                    # 4, 19, 
+                    10, 14, 20, 30
+                    #31, 32
+                    )
+embryo_data = EmbryoAtlasData(samples = select_samples)
+embryo_data <- embryo_data[,apply(reducedDim(embryo_data, "pca.corrected"), 1, function(x) !all(is.na(x)))]
+embryo_data <- runUMAP(embryo_data, dimred = "pca.corrected", name = 'umap')
+plotReducedDim(embryo_data, colour_by="stage", dimred = "umap") 
+
+# create milo object
+traj_milo <- Milo(embryo_data)
+
+# run through milo pipeline using parameters from vignette
+traj_milo <- buildGraph(traj_milo, k = 30, d = 30, reduced.dim = "pca.corrected")
+```
+
+```{r}
+scheme_options <- c("none", "reduced_dim", "graph")
+refinement_options <- c(FALSE, TRUE, TRUE)
+scheme_refinement <- c("random", "reduced_dim", "graph")
+nh_stats <- data.frame()
+nh_coverage <- data.frame()
+nh_coverage_distribution <- data.frame()
+for (x in seq(0.1,0.7, by = 0.1)) {
+  for (i in 1:3){
+    for (j in seq_along(scheme_options)){
+      refinement_scheme <- scheme_options[j]
+      refinement_bool <- refinement_options[j]
+      scheme <- scheme_refinement[j]
+      print(glue::glue("Running scheme: {scheme}, prop: {x}, refined: {refinement_bool}, seed: {42+i}"))
+      my_seed <- 42 + i
+      set.seed(my_seed)
+      my_times <- system.time(nhs <- nhoods(miloR::makeNhoods(traj_milo, prop=x, k=20, reduced_dims = "pca.corrected", d=30, refined = refinement_bool, refinement_scheme = refinement_scheme)))
+      nh_ixs <- colnames(nhs)
+      nh_sizes <- colSums(nhs > 0)
+      names(nh_sizes) <- nh_ixs
+      nh_stats_df <- data.frame(nh_sizes, ixs=names(nh_sizes), prop=x, seed=my_seed, refined = scheme, elapsed_time = my_times[[3]])
+      nh_stats <- bind_rows(nh_stats, nh_stats_df)
+      coverage_distribution <- data.frame(ixs = 1:nrow(nhs), occurrences = rowSums(nhs), prop = x, seed = my_seed, refined = scheme)
+      coverage_proportion <- 1 - (sum(rowSums(nhs) == 0)/nrow(nhs))
+      nh_coverage_df <- data.frame(refined = scheme, prop = x, seed = my_seed, coverage_proportion = coverage_proportion)
+      nh_coverage <- bind_rows(nh_coverage, nh_coverage_df)
+      nh_coverage_distribution <- bind_rows(nh_coverage_distribution, coverage_distribution)
+    }
+  }
+}
+```
+
+```{r}
+dist_mat <- dist(reducedDim(traj_milo, type = "pca.corrected"))
+dist_mat <- as.matrix(dist_mat)
+
+unique_props <- sort(unique(nh_stats$prop))
+
+dist_p_ls_ref <- lapply(unique_props, function(p){
+  ## Get all indexes of sampled cells 
+  df <- filter(nh_stats, prop==p, refined == "reduced_dim")
+  seeds <- unique(nh_stats$seed)
+  ix_ls <- lapply(seeds, function(x) filter(df, seed==x) %>% pull(ixs) %>% as.numeric)
+  nms <- t(combn(x = 1:length(seeds), m=2, simplify = TRUE))
+  dist_ls <- lapply(1:nrow(nms), function(i) 
+    rowMin(dist_mat[ix_ls[[nms[i,1]]],ix_ls[[nms[i,2]]]])
+  )
+  data.frame(distance=unlist(dist_ls), class="Closest sampled cell", prop=p) 
+})
+
+dist_p_ls_rand <- lapply(unique_props, function(p){
+  ## Get all indexes of sampled cells 
+  df <- filter(nh_stats, prop==p, refined == "random")
+  seeds <- unique(nh_stats$seed)
+  ix_ls <- lapply(seeds, function(x) filter(df, seed==x) %>% pull(ixs) %>% as.numeric)
+  nms <- t(combn(x = 1:length(seeds), m=2, simplify = TRUE))
+  dist_ls <- lapply(1:nrow(nms), function(i) 
+    rowMin(dist_mat[ix_ls[[nms[i,1]]],ix_ls[[nms[i,2]]]])
+  )
+  data.frame(distance=unlist(dist_ls), class="Closest sampled cell", prop=p) 
+})
+
+
+dist_p_ls_gra_undir2 <- lapply(unique_props, function(p){
+  ## Get all indexes of sampled cells 
+  df <- filter(nh_stats, prop==p, refined == "graph")
+  seeds <- unique(nh_stats$seed)
+  ix_ls <- lapply(seeds, function(x) filter(df, seed==x) %>% pull(ixs) %>% as.numeric)
+  nms <- t(combn(x = 1:length(seeds), m=2, simplify = TRUE))
+  dist_ls <- lapply(1:nrow(nms), function(i) 
+    rowMin(dist_mat[ix_ls[[nms[i,1]]],ix_ls[[nms[i,2]]]])
+  )
+  data.frame(distance=unlist(dist_ls), class="Closest sampled cell", prop=p) 
+})
+
+traj_milo <- makeNhoods(traj_milo, d=30, reduced_dims = "pca.corrected")
+```
+
+```{r}
+traj_milo <- calcNhoodDistance(traj_milo, d=30, reduced.dim = "pca.corrected")
+mean_dist <- lapply(
+  traj_milo@nhoodDistances, function(x)
+    as.matrix(x) %>%
+    {ifelse(.==0, NA, .)} %>%
+    {.[!is.na(.)]}
+)
+
+mean_dist <- purrr::reduce(mean_dist, c)
+closest_nn_dist <- rowMins(ifelse(dist_mat==0, 1000,dist_mat)) 
+
+bind_rows(
+  purrr::reduce(dist_p_ls_ref, bind_rows) %>% mutate(sampling_scheme="reduced_dim"),
+  purrr::reduce(dist_p_ls_rand, bind_rows) %>% mutate(sampling_scheme="random"),
+  purrr::reduce(dist_p_ls_gra_undir2, bind_rows) %>% mutate(sampling_scheme="graph")
+
+) %>%
+  mutate(sampling_scheme = factor(sampling_scheme, levels = c("random", "reduced_dim", "graph"))) %>%
+  ggplot(aes(distance, color=as.factor(prop))) +
+  stat_ecdf(data=data.frame(distance=mean_dist, class="Closest NN"), color="black", aes(linetype="k-NN distances"), size=0.8) +
+  stat_ecdf(size=0.8) +
+  scale_linetype_manual(values=2, name="") +
+  coord_cartesian(xlim = c(NA,30))+
+  scale_color_viridis_d(name="Proportion of\ncells sampled") +
+  facet_wrap(sampling_scheme~., ncol = 3) +
+  xlab("distance to closest NH index") +
+  ylab("Cum. fraction") +
+  theme_bw(base_size=16)
+```
+
+```{r}
+nh_coverage %>%
+  dplyr::mutate(refined=factor(refined, levels = c("random", "reduced_dim", "graph"))) %>%
+  ggplot(aes(x = prop, y = coverage_proportion, fill = refined))+
+  geom_line()+
+  geom_point(shape=21, color = "black", size = 4)+
+  coord_cartesian(ylim = c(0,1))+
+  facet_wrap(~seed, ncol = 3)+
+  scale_fill_brewer(palette = "Spectral")+
+  theme_bw(base_size=16)
+```
+
+```{r}
+nh_coverage_distribution %>%
+  dplyr::filter(seed == 43) %>%
+  dplyr::group_by(refined, prop, seed) %>%
+  dplyr::mutate(drank = dense_rank(desc(occurrences))) %>%
+  dplyr::mutate(refined=factor(refined, levels = c("random", "reduced_dim", "graph"))) %>%
+  ggplot(aes(x = occurrences, group = refined, fill = refined))+
+  geom_density(alpha = 0.3)+
+  scale_fill_brewer(palette = "Spectral", labels = c("random", "reduced_dim", "graph"))+
+  theme_bw(base_size = 16)+
+  facet_wrap(~prop, scales = "free_y")
+```
+
+```{r}
+nh_stats %>%
+  dplyr::filter(seed == 43) %>%
+  dplyr::mutate(refined=factor(refined, levels = c("random", "reduced_dim", "graph"))) %>%
+  ggplot(aes(x = prop, y = elapsed_time,  group = refined, fill = refined))+
+  geom_line(colour = "black")+
+  geom_point(shape = 21, colour = "black", size = 5)+
+  scale_fill_brewer(palette = "Spectral", labels = c("random", "reduced_dim", "graph"))+
+  theme_bw(base_size = 16)
+```

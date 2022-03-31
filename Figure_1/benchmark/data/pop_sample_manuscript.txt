@@ -1,0 +1,8 @@
+Caudal_neurectoderm
+Erythroid2
+Gut
+Somitic_mesoderm
+Pharyngeal_mesoderm
+Erythroid1
+Mesenchyme
+ExE_endoderm

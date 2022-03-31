@@ -1,0 +1,9 @@
+Epiblast
+Caudal_neurectoderm
+Caudal_Mesoderm
+Allantois
+NMP
+Pharyngeal_mesoderm
+Intermediate_mesoderm
+Mesenchyme
+ExE_endoderm

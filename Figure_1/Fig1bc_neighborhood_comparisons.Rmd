@@ -1,0 +1,94 @@
+
+This file contains all the code needed to re-create Figures 1b and 1c. 
+
+```{r echo=TRUE, results='hide'}
+library(ggplot2)
+library(SingleCellExperiment)
+library(tidyverse)
+library(igraph)
+library(miloR)
+library(scater)
+library(dplyr)
+library(patchwork)
+library(magrittr)
+library(Matrix)
+library(MouseGastrulationData)
+library(BiocNeighbors)
+library(RColorBrewer)
+```
+
+Import mouse gastrulation single-cell data from Pijuan-Sala et al. 2019. To make computations faster, we download just a subset of samples. 
+
+```{r warning=FALSE, message=FALSE}
+# mouse gastrulation data from MouseGastrulationData package, as in vignette
+select_samples <- c(2,  3,  6, 15,
+                    # 4, 19, 
+                    10, 14, 20, 30
+                    #31, 32
+                    )
+embryo_data <- EmbryoAtlasData(samples = select_samples)
+embryo_data <- embryo_data[,apply(reducedDim(embryo_data, "pca.corrected"), 1, function(x) !all(is.na(x)))]
+embryo_data <- runUMAP(embryo_data, dimred = "pca.corrected", name = 'umap')
+plotReducedDim(embryo_data, colour_by="stage", dimred = "umap")
+
+# create milo object
+traj_milo <- Milo(embryo_data)
+
+# run through milo pipeline using parameters from vignette
+traj_milo <- buildGraph(traj_milo, k = 30, d = 30, reduced.dim = "pca.corrected")
+```
+
+
+```{r}
+scheme_options <- c("none", "reduced_dim", "graph")
+refinement_options <- c(FALSE, TRUE, TRUE)
+scheme_refinement <- c("random", "reduced_dim", "graph")
+nh_stats <- data.frame()
+for (x in seq(0.1,0.7, by = 0.1)) {
+  for (j in seq_along(scheme_options)){
+    refinement_scheme <- scheme_options[j]
+    refinement_bool <- refinement_options[j]
+    scheme <- scheme_refinement[j]
+    print(glue::glue("Running scheme: {scheme}, prop: {x}, refined: {refinement_bool}"))
+    my_times <- system.time(nhs <- nhoods(miloR::makeNhoods(traj_milo, prop=x, k=20, reduced_dims = "pca.corrected", d=30, refined = refinement_bool, refinement_scheme = refinement_scheme)))
+    nh_ixs <- colnames(nhs)
+    nh_sizes <- colSums(nhs > 0)
+    names(nh_sizes) <- nh_ixs
+    nh_stats_df <- data.frame(nh_sizes, ixs=names(nh_sizes), prop=x, refined = scheme, elapsed_time = my_times[[3]])
+    nh_stats <- bind_rows(nh_stats, nh_stats_df)
+  }
+}
+```
+
+```{r}
+nh_stats %>%
+  mutate(prop=as.factor(prop)) %>%
+  mutate(refined=factor(refined, levels = c("random", "reduced_dim", "graph"))) %>%
+  ggplot(aes(prop, nh_sizes, fill=refined)) +
+  geom_boxplot(varwidth = FALSE, outlier.alpha=0.1, outlier.size = 0.1) +
+  xlab("Proportion of cells sampled") +
+  ylab("Neighbourhood size") +
+  scale_fill_brewer(palette = "Set2", name="Sampling scheme", labels = c("Random", "Reduced dim", "Graph")) +
+  #scale_fill_manual(values = c("#fdae61", "#ffffbf", "#abd9e9"), name="Sampling scheme", labels = c("random", "reduced_dim", "graph")) +
+  theme_bw(base_size=16) + 
+  theme(legend.position = "none", axis.text.x=element_text(colour="black"), axis.text.y=element_text(colour="black"))
+ggsave("fig1b.tiff", path = "/Users/kluzer01/Desktop/figures/", height = 4, width = 4.5, device='tiff', dpi=700)
+
+```
+
+```{r}
+nh_stats %>%
+  mutate(refined=factor(refined, levels = c("random", "reduced_dim", "graph"))) %>%
+  group_by(prop, refined) %>%
+  summarise(n_nhs=n()) %>%
+  ggplot(aes(prop, n_nhs, fill=refined)) +
+  geom_point(shape=21, size=3) + 
+  # geom_errorbar(aes(ymin=mean_n_nhs-sd_n_nhs, ymax=mean_n_nhs+sd_n_nhs))
+  xlab("Proportion of cells sampled") +
+  ylab("Number of neighbourhoods") +
+  scale_fill_brewer(palette = "Set2", name="Sampling scheme", labels = c("Random", "Reduced dim", "Graph")) +
+  #scale_fill_manual(values = c("#ffffbf", "#FC8D59", "#99d594"), name="Sampling scheme", labels = c("random", "reduced_dim", "graph")) +
+  theme_bw(base_size=16) + 
+  theme(legend.position="none", axis.text.x=element_text(colour="black"), axis.text.y=element_text(colour="black"))
+ggsave("1c.tiff", path = "/Users/kluzer01/Desktop/figures/", height = 4, width = 4.5, device='tiff', dpi=700) 
+```
