@@ -1,6 +1,5 @@
 ## Compute benchmark outcomes ##  
 suppressPackageStartupMessages({
-  library(argparse)
   library(tidyverse)
   library(SingleCellExperiment)
   library(scran)

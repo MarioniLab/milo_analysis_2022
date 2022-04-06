@@ -422,6 +422,19 @@ makeNhoods2 <- function(x, prop=0.1, k=21, d=30, refined=TRUE, reduced_dims="PCA
   return(refined_vertices)
 }
 
+.check_empty <- function(x, attribute){
+    # check if a Milo object slot is empty or not
+    x.slot <- slot(x, attribute)
+    
+    if(is.list(x.slot) & names(slot(x, "graph")) == "graph"){
+        return(length(x.slot[[1]]) > 0)
+    } else if(is.list(x.slot) & is.null(names(x.slot))){
+        return(length(x.slot))
+    } else if(any(class(x.slot) %in% c("dgCMatrix", "dsCMatrix", "ddiMatrix", "matrix"))){
+        return(sum(rowSums(x.slot)) == 0)
+    }
+}
+
 ### as I cannot install the development branch, I will include code for the new version of testNhoods and spatialFDR here
 testNhoods2 <- function(x, design, design.df,
                        fdr.weighting=c("k-distance", "neighbour-distance", "max", "graph-overlap", "none"),
@@ -726,7 +739,7 @@ run_milo_tri <- function(sce, condition_col, sample_col, reduced.dim="pca.correc
   milo <- Milo(sce)
   milo <- buildGraph(milo, k=k, d=d, reduced.dim = reduced.dim)
   milo <- makeNhoods2(milo, prop = prop, k=k, d=d, reduced_dims = reduced.dim, 
-                      refined = TRUE, refinement_scheme = "graph", directed = FALSE, order = 2)
+                      refined = TRUE, refinement_scheme = "graph")
   ## Test DA
   milo <- miloR::countCells(milo, meta.data = data.frame(colData(milo)), sample=sample_col)
   #milo <- calcNhoodDistance(milo, d=d, reduced.dim = reduced.dim)

@@ -31,7 +31,7 @@ for batch_sd in $batch_vec
 do
 for method in $R_methods
 do
-echo "Rscript /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/run_DA_R.r /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/data/${data_id}_data_bm.RDS $method $seed $pop --pop_enrichment $pop_enr --data_id $data_id --k $k --batchEffect_sd $batch_sd" | \
+echo "Rscript /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/run_DA_R.R /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/${data_id}_data_bm.RDS $method $seed $pop --pop_enrichment $pop_enr --data_id $data_id --k $k --batchEffect_sd $batch_sd" | \
 bsub -o ${outdir}/milo_bm_${data_id}_${seed}_${method}_${pop}_${batch_sd}.out -e ${outdir}/milo_bm_${data_id}_${seed}_${method}_${pop}_${batch_sd}.err -R"select[mem>50000] rusage[mem=50000]" -M50000 
 #                             fi
 done

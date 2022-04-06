@@ -21,9 +21,9 @@ Some plotting utils
 
 ```{r}
 ## color palette for methods
-method_names <- c("reduced_dim", "graph")
+method_names <- c("milo_red", "milo_tri")
 method_colors <- RColorBrewer::brewer.pal(7, name="Spectral")[c(5,6)]
-method_colors <- c("#FC8D59", "#99d594")
+method_colors <- c("#fc8d62", "#8da0cb")
 method_colors <- setNames(method_colors, method_names)
 method_labels <- c("Reduced_dim", "Graph")
 method_labels <- setNames(method_labels, method_names)
@@ -116,7 +116,7 @@ plotReducedDim(embryo_sce, "UMAP", colour_by="celltype", text_by="celltype", poi
   guides(color=guide_legend(override.aes = list(size=2)))
 ```
 
-Save object 4 benchmark
+Save object for benchmark
 
 ```{r}
 saveRDS(embryo_sce, "/Users/kluzer01/Documents/milo_analysis_2022/Figure_1/benchmark/embryo_data_bm.RDS")
@@ -145,9 +145,9 @@ for (i in 1:3) {
 ## At this point, you have finished creating the population files. The analysis continues with the following steps:
 1. Create a conda environment on cluster and name it milo_bm.
 2. Copy the milo_analysis_2022 repository onto the cluster
-3. Run 'submit_make_bm_data.sh'. Make sure you activate read/write/execute permissions! This creates DA simulations for the different populations of cells.
-4. Run 'submit_benchmark.sh'. This runs the two methods we are trying to compare (reduced_dim and graph) on the simulations. 
-
+3. Run 'submit_make_bm_data.sh'. Make sure you activate read/write/execute permissions! This creates DA simulations for the different populations of cells. This step should only take a few minutes.
+4. Run 'submit_benchmark.sh'. This runs the two methods we are trying to compare (reduced_dim and graph) on the simulations. This step will take a few hours (~4 hours).
+5. Copy all /data/output_benchmark/benchmark_* files to a local directory.
 
 ## Pick threshold for cells in true DA regions based on p(C1) distribution
 
@@ -155,7 +155,7 @@ Read full outcomes and true probabilities
 
 ```{r}
 read4_prob_hist <- function(data_id){
-  outdir <- glue("/Users/kluzer01/Documents/Milo2.0/R_scripts/milo_analysis_2020/benchmark/data/output_benchmark/")
+  outdir <- glue("/Users/kluzer01/Documents/milo_analysis_2022/Figure_1/benchmark/data/output_benchmark/")
   res_files <- list.files(outdir, pattern=glue("embryo.+batchEffect0.DAresults"))
   res_files_full <- list.files(outdir, pattern=glue("embryo.+batchEffect0.DAresults"), full.names = TRUE)
   #res_files_full_nomeld <- str_subset(res_files_full, "meld|cydar_batch|louvain_batch|milo_batch", negate = TRUE)
@@ -189,13 +189,9 @@ read4_prob_hist <- function(data_id){
 embryo_res_df <- read4_prob_hist("embryo")
 ```
 
-4. Run 'submit_benchmark.sh'.
-
 Plot distribution of P(C1) in cells identified as DA by different methods
 
 ```{r, fig.height=8, fig.width=18}
-
-embryo_res_df <- read.csv("/Users/kluzer01/Documents/Milo2.0/R_scripts/milo_analysis_2020/benchmark/data/embryo_res_df.csv")
 calculate_quantile_thresh <- function(res_df){
   return(quantile(1-res_df[res_df$method=="milo_red",][["true_prob"]], probs = seq(0,1, by=0.25))["75%"])
 }
@@ -222,7 +218,6 @@ plot_p_hist <- function(res_df){
 # plot_p_hist(cluster_res_df) + ggtitle("clusters") 
 plot_p_hist(embryo_res_df) + ggtitle("embryo") +
   plot_layout(guides="collect")
-
 ```
 
 ```{r, fig.height=5, fig.width=16}
@@ -247,7 +242,6 @@ plot_thresh_hist <- function(linear_res_df){
 
 plot_thresh_hist(embryo_res_df) + ggtitle("Mouse Gastrulation", subtitle="")
 ```
-
 
 Use 75% quantile of P(C1) in all cells to define threshold for true DA
 
@@ -343,15 +337,19 @@ prob2FC <- function(prob){
 }
 ```
 
+Next step:
+
+1. Run 'build_outcome.R'. Use embryo_thresh value to set threshold in build_outcome.R.
+2. Copy output file 'outcome_embryo_batchEffect0.csv' to a local directory.
 
 ## Embryo data
 
 ### W/o batch effect
 
-Read outcome for embryo (built with wrapper `build_outcome.R`). Don't forget to add embryo_thresh to build_outcome.R!
+Read outcome for embryo (built with wrapper `build_outcome.R`).
 
 ```{r}
-outcome_df <- read_csv("/Users/kluzer01/Documents/Milo2.0/R_scripts/milo_analysis_2020/benchmark/data/output_benchmark/outcome_embryo_batchEffect0.csv")
+outcome_df <- read_csv("/Users/kluzer01/Documents/milo_analysis_2022/Figure_1/benchmark/data/output_benchmark/outcome_embryo_batchEffect0.csv")
 ```
 
 ```{r}
@@ -367,8 +365,6 @@ outcome_df <- read_csv("/Users/kluzer01/Documents/Milo2.0/R_scripts/milo_analysi
 #   enr_name <- paste("logFC = ", fc)
 #   return(enr_name)
 # }
-
-
 pl_df <- outcome_df %>% 
    filter(batchEffect==0 & str_detect(method, "_batch", negate = TRUE)) %>% 
    mutate(FDR = FP/(TP+FP)) %>% 
@@ -382,33 +378,33 @@ pl_df <- outcome_df %>%
 p_top <- pl_df %>%
   filter(batchEffect=="0") %>%
   ggplot(aes(as.factor(round(prob2FC(as.numeric(enr)),1)), TPR, color=method)) +
-  geom_boxplot(outlier.alpha = 0) +
-  ggbeeswarm::geom_quasirandom(alpha=0.5, position="stack", size=0.5) +
+  geom_boxplot(outlier.alpha = 0, alpha =1) +
+  ggbeeswarm::geom_quasirandom(alpha=1, position="stack", size=0.5) +
   # geom_hline(yintercept = 0.1, linetype=2) +
-  theme_bw(base_size = 16) +
+  theme_bw(base_size = 12) +
   scale_color_manual(values = method_colors, labels=setNames(method_labels, method_names)) +
   scale_fill_manual(values = method_colors, labels=setNames(method_labels, method_names)) +
+  theme(legend.position = "none", axis.text.x=element_text(colour="black"), axis.text.y=element_text(colour="black")) +
   facet_grid(.~method, labeller=pl_labeller) +
+  #theme(strip.background =element_rect(fill="grey")) +
   theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), axis.title.x = element_blank())
 
 p_bottom <- pl_df %>%
   filter(batchEffect=="0") %>%
   ggplot(aes(as.factor(round(prob2FC(as.numeric(enr)),1)), FDR, color=method)) +
-  geom_boxplot(outlier.alpha = 0) +
-  ggbeeswarm::geom_quasirandom(alpha=0.5, position="stack", size=0.5) +
+  geom_boxplot(outlier.alpha = 0, alpha =1) +
+  ggbeeswarm::geom_quasirandom(alpha=1, position="stack", size=0.5) +
   geom_hline(yintercept = 0.1, linetype=2) +
-  theme_bw(base_size = 16) +
+  theme_bw(base_size = 12) +
   scale_color_manual(values = method_colors, labels=setNames(method_labels, method_names)) +
   scale_fill_manual(values = method_colors, labels=setNames(method_labels, method_names)) +
+  theme(legend.position = "none", axis.text.x=element_text(colour="black"), axis.text.y=element_text(colour="black")) +
   facet_grid(.~method, labeller=pl_labeller) +
-  xlab('Simulated log-Fold Change') +
+  xlab('Simulated log fold change') +
   ylim(c(0, 1))
 
 (p_top / p_bottom) + plot_layout(guides="collect") 
-
-
-  # ggsave("~/mount/gdrive/milo/Figures/benchmark_v2/bm_nobatch.pdf",  width = 11, height = 6) +
-  # ggsave("~/mount/gdrive/milo/Figures/benchmark_v2/bm_nobatch.png",  width = 11, height = 6)
+ggsave("fig1cc.tiff", path = "/Users/kluzer01/Desktop/figures/", height = 4.5, width = 5, device='tiff', dpi=700)
 
 ```
 
@@ -419,8 +415,7 @@ Due to low signal to noise ratio for certain simulations
 
 ```{r}
 ## Read outputs
-
-outdir <- "/Users/kluzer01/Documents/Milo2.0/R_scripts/milo_analysis_2020/benchmark/data/output_benchmark"
+outdir <- "/Users/kluzer01/Documents/milo_analysis_2022/Figure_1/benchmark/data/output_benchmark"
 res_files <- list.files(outdir, pattern=".DAresults")
 res_files_full <- list.files(outdir, pattern=".DAresults", full.names = TRUE)
 
@@ -488,40 +483,45 @@ pl_df <- outcome_df_2 %>%
    # filter(prob_bins >= 0.55 & batchEffect==0)  %>% 
    mutate(enr=as.character(enr))  %>%
   filter(pop %in% c("Erythroid2", "Caudal_neurectoderm"))
+
 p_top <- pl_df %>%
   filter(batchEffect=="0") %>%
   ggplot(aes(as.factor(prob_bins), TPR, color=pop, shape=pop)) +
-  ggbeeswarm::geom_quasirandom(alpha=0.5, position="stack", size=0.5) +
+  ggbeeswarm::geom_quasirandom(alpha=0.3, position="stack", size=0.5) +
   geom_point(data = . %>% group_by(method, pop, prob_bins) %>% summarise(TPR=mean(TPR)), size=2,
                           position=position_dodge(width=0.5)) +
-  theme_bw(base_size = 16) +
+  theme_bw(base_size = 12) +
+ #scale_shape_manual("Population", labels = c("X", "Y")) +
   facet_grid(.~method, labeller=pl_labeller) + 
-  theme(axis.text.x = element_text(angle=90)) +
-  scale_color_brewer(palette="Set2") +
-  remove_x_axis()
+  theme(axis.text.x = element_text(angle=90, colour="black"), legend.position = "none", axis.text.y=element_text(colour="black")) +
+  scale_color_brewer(palette="Set1") +
+  remove_x_axis() 
+
 p_middle <- pl_df %>%
   filter(batchEffect=="0") %>%
   ggplot(aes(as.factor(prob_bins), FPR, color=pop, shape=pop)) +
   # geom_violin(scale="width") +
-  # geom_boxplot(outlier.alpha = 0) +
-  ggbeeswarm::geom_quasirandom(alpha=0.5, position="stack", size=0.5) +
+  ggbeeswarm::geom_quasirandom(alpha=0.3, position="stack", size=0.5) +
   geom_point(data = . %>% group_by(method, pop, prob_bins) %>% summarise(FPR=mean(FPR, na.rm = TRUE)), size=2,  
              position=position_dodge(width=0.5)) +
-  theme_bw(base_size = 16) +
-  scale_color_brewer(palette="Set2") +
+  theme_bw(base_size = 12) +
+  scale_color_brewer(palette="Set1", "Population") +
   facet_grid(.~method, labeller=pl_labeller) + 
   geom_hline(yintercept = 0.1, linetype=2) +
   xlab("P(C1) bins") +
-  theme(axis.text.x = element_text(angle=90, hjust=1, vjust=0.5)) 
+  theme(axis.text.x = element_text(angle=90, hjust=1, vjust=0.5, colour="black"), legend.position = "top", axis.text.y=element_text(colour="black")) 
+
 pl_A <- p_top / p_middle  +
-  plot_layout(guides="collect") &
-  theme(legend.position="top", legend.justification = c(1,1))
+  plot_layout(guides="collect") +
+  theme(legend.position="top") 
 pl_A
+
+ggsave("fig1dleg.tiff", path = "/Users/kluzer01/Desktop/figures/", height = 4.5, width = 5, device='tiff', dpi=700)
 ```
 
 
 ```{r, fig.height=6, fig.width=8}
-outcome_df <- read_csv("/Users/kluzer01/Documents/Milo2.0/R_scripts/milo_analysis_2020/benchmark/data/output_benchmark/outcome_embryo_batchEffect0.csv")
+outcome_df <- read_csv("/Users/kluzer01/Documents/milo_analysis_2022/Figure_1/benchmark/data/output_benchmark/outcome_embryo_batchEffect0.csv")
 embryo_thresh <- 0.5406022
 
 setwd("/Users/kluzer01/Documents/Milo2.0/R_scripts/milo_analysis_2020/benchmark/data/output_benchmark/")
@@ -532,7 +532,7 @@ pl_signal2noise <- function(mypop, myenr, myseed, mymethod){
     pos_outcome <- "NegLFC"
   }
   popTPR <- outcome_df %>% filter(pop==mypop & enr==myenr & seed==myseed & method==mymethod) %>% pull(TPR)
-  res_file <- list.files("/Users/kluzer01/Documents/Milo2.0/R_scripts/milo_analysis_2020/benchmark/data/output_benchmark", 
+  res_file <- list.files("/Users/kluzer01/Documents/milo_analysis_2022/Figure_1/benchmark/data/output_benchmark/", 
                            pattern= paste0(".+",'embryo',"_pop_", mypop, "_enr",myenr,"_seed", myseed, '.+batchEffect0',".DAresults.",mymethod,".csv"),
                            full.names = TRUE)
   
