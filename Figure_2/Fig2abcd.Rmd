@@ -24,11 +24,11 @@ ggplot(time.df2, aes(x=(n_cells), y=value/60, group_by = method, fill = method))
     geom_point(shape=21, size=3) +
     scale_fill_manual(values = c("#8da0cb", "#fc8d62"), name="Sampling scheme", labels = c("Graph", "Reduced dim")) +
     labs(x="Number of cells", y="Elapsed time (min)") +
-    theme(legend.position = "none", axis.text.x=element_text(colour="black"), axis.text.y=element_text(colour="black")) +
+    theme(legend.position = "top", axis.text.x=element_text(colour="black"), axis.text.y=element_text(colour="black")) +
     geom_text(aes(label=round(value/60, 1)),hjust=-0.3,vjust=0.5) +
     scale_x_continuous(limits = c(30000, 210000), labels = c("50,000", "100,000", "150,000", "200,000"), breaks = c(50000, 100000, 150000, 200000))
 
-ggsave("fig2a.tiff", path = "/Users/kluzer01/Desktop/figures/", height = 4, width = 4.5, device='tiff', dpi=700)
+ggsave("fig2alegen.tiff", path = "/Users/kluzer01/Desktop/figures/", height = 4, width = 7, device='tiff', dpi=700)
 
 # check if the relationship is linear -- it is not
 # ggplot(time_df, aes(x=(n_cells), y=graph/60)) +
@@ -44,7 +44,6 @@ ggsave("fig2a.tiff", path = "/Users/kluzer01/Desktop/figures/", height = 4, widt
 
 Plot memory analysis with 200,000 cells. 
 
-```{r}
 ```{r}
 time_df <- read_csv("/Users/kluzer01/Documents/Milo2.0/R_scripts/data/time_df.csv")
 time.df2 <- pivot_longer(data.frame(time_df), cols = c(reduced_dim, graph), names_to = "method")
@@ -88,10 +87,10 @@ ggplot(time_df, aes(x=as.factor(k_val), y=graph/60)) +
     theme_bw(base_size=16) +
     geom_point(shape=21, size=3, alpha=1, fill = "#8da0cb") +
     labs(x="k", y="Elapsed time (min)") +
-    scale_y_continuous(expand=c(0,0)) +
     theme(legend.position = "none", axis.text.x=element_text(colour="black"), axis.text.y=element_text(colour="black")) +
     ylim(c(0, 100)) +
     geom_text(aes(label=round(graph/60, 1)),hjust=-0.4,vjust=0.5) 
+ggsave("fig2d.tiff", path = "/Users/kluzer01/Desktop/figures/", height = 4, width = 4.5, device='tiff', dpi=700)
 
 ```
 
