@@ -1,0 +1,549 @@
+---
+title: "Benchmarking DA methods"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(MouseGastrulationData)
+library(SingleCellExperiment)
+library(scater)
+library(scran)
+library(bit64)
+library(glue)
+library(patchwork)
+library(ggpubr)
+
+source('/Users/kluzer01/Documents/milo_analysis_2022/Figure_1/benchmark/benchmark_utils.R')
+```
+
+Some plotting utils
+
+```{r}
+## color palette for methods
+method_names <- c("milo_red", "milo_tri")
+method_colors <- RColorBrewer::brewer.pal(7, name="Spectral")[c(5,6)]
+method_colors <- c("#fc8d62", "#8da0cb")
+method_colors <- setNames(method_colors, method_names)
+method_labels <- c("Reduced_dim", "Graph")
+method_labels <- setNames(method_labels, method_names)
+
+scale_color_methods <- function(){ scale_color_manual(values = method_colors, labels=method_labels) }
+scale_fill_methods <- function(){ scale_fill_manual(values = method_colors, labels=method_labels) }
+
+remove_x_axis <- function(){
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), axis.title.x = element_blank())  
+}
+
+remove_y_axis <- function(){
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank(), axis.title.y = element_blank())  
+}
+```
+
+```{r}
+enr_labeller2 <- function(value){
+  fc <- round(prob2FC(as.numeric(value)), 2)
+  enr_name <- paste("logFC = ", fc)
+  return(c(value=enr_name))
+}
+
+pl_labeller <- labeller(method=as_labeller(setNames(method_labels, method_names)),
+     enr=enr_labeller2)
+```
+
+In this notebook I will visualize the results from benchmarking Milo reduced_dim against graph.
+
+## Benchmarking workflow
+
+All the main functions and scripts are implemented in `benchmark`. To run the analysis, several scripts need to be called:
+
+- Condition labels are simulated by running `make_bm_data.R` (wrapped in `submit_make_bm_data.sh`)
+- Methods implemented in R are run with `run_DA_R.r` (wrapped in `submit_benchmark.sh`)
+- Finally, the results are collated with `build_outcome.R`
+
+This document will outline all the necessary steps.
+
+## Define input datasets
+
+These are going to be used as underlying KNN graphs with different topologies for benchmarking.
+
+### Mouse gastrulation data
+
+Select samples from late time points (even number of replicates)
+
+```{r}
+AtlasSampleMetadata %>%
+  arrange(stage) %>%
+  mutate(sample=factor(sample, levels=unique(sample))) %>%
+  ggplot(aes(stage, sample)) +
+  geom_point()
+
+late_samples <- AtlasSampleMetadata %>%
+  filter(stage %in% c("E7.75", "E8.0", "E8.25", "E8.5")) %>%
+  pull(sample)
+```
+
+```{r}
+embryo_sce <- EmbryoAtlasData(type="processed", samples = late_samples)
+```
+
+```{r}
+data.frame(colData(embryo_sce)) %>%
+  ggplot(aes(as.factor(sample), as.factor(pool))) + geom_point()
+```
+
+Preprocessing
+
+```{r}
+logcounts(embryo_sce) <- log1p(counts(embryo_sce))
+## Exclude zero counts genes
+keep.rows <- rowSums(logcounts(embryo_sce)) != 0
+embryo_sce <- embryo_sce[keep.rows, ]
+
+dec <- modelGeneVar(embryo_sce)
+hvgs <- getTopHVGs(dec, n=5000)
+
+## Drop cells with NAs in corrected pca (low quality)
+embryo_sce <- embryo_sce[,apply(reducedDim(embryo_sce, "pca.corrected"), 1, function(x) all(!is.na(x)))]
+
+## Run UMAP (the data has been subsetted)
+embryo_sce <- scater::runUMAP(embryo_sce, dimred="pca.corrected")
+```
+
+```{r, fig.height=6, fig.width=10}
+plotReducedDim(embryo_sce, "UMAP", colour_by="celltype", text_by="celltype", point_size=0.1) +
+  scale_color_manual(values=EmbryoCelltypeColours) +
+  guides(color=guide_legend(override.aes = list(size=2)))
+```
+
+Save object for benchmark
+
+```{r}
+saveRDS(embryo_sce, "/Users/kluzer01/Documents/milo_analysis_2022/Figure_1/benchmark/embryo_data_bm.RDS")
+```
+
+```{r}
+embryo_sce <- readRDS("/Users/kluzer01/Documents/milo_analysis_2022/Figure_1/benchmark/embryo_data_bm.RDS")
+```
+
+Save list of celltype names and sample by sizes.
+
+```{r}
+for (i in 1:3) {
+  pop_size_df <- as.data.frame(table(embryo_sce$celltype)) %>%
+  dplyr::rename(pop=Var1, pop_size=Freq) %>%
+  mutate(size_bin = cut(pop_size, breaks = 10)) %>%
+  group_by(size_bin) %>%
+  sample_n(size=1) 
+  pop_size_df$pop <- gsub(" ", "_", pop_size_df$pop)
+  pop_size_df <- pop_size_df[-which(pop_size_df$pop == "Forebrain/Midbrain/Hindbrain"),]
+  write(as.character(pop_size_df$pop), glue("/Users/kluzer01/Documents/milo_analysis_2022/Figure_1/benchmark/data/pop_sample_{i}.txt"))
+}
+```
+
+
+## At this point, you have finished creating the population files. The analysis continues with the following steps:
+1. Create a conda environment on cluster and name it milo_bm.
+2. Copy the milo_analysis_2022 repository onto the cluster
+3. Run 'submit_make_bm_data.sh'. Make sure you activate read/write/execute permissions! This creates DA simulations for the different populations of cells. This step should only take a few minutes.
+4. Run 'submit_benchmark.sh'. This runs the two methods we are trying to compare (reduced_dim and graph) on the simulations. This step will take a few hours (~4 hours).
+5. Copy all /data/output_benchmark/benchmark_* files to a local directory.
+
+## Pick threshold for cells in true DA regions based on p(C1) distribution
+
+Read full outcomes and true probabilities
+
+```{r}
+read4_prob_hist <- function(data_id){
+  outdir <- glue("/Users/kluzer01/Documents/milo_analysis_2022/Figure_1/benchmark/data/output_benchmark/")
+  res_files <- list.files(outdir, pattern=glue("embryo.+batchEffect0.DAresults"))
+  res_files_full <- list.files(outdir, pattern=glue("embryo.+batchEffect0.DAresults"), full.names = TRUE)
+
+  res_ls <- lapply(seq_along(res_files_full), function(i){ 
+    print(paste("Outcome no. ", i))
+    benchmark_df <- read_csv(res_files_full[i]) 
+    ## Check if conditions were swapped in test
+    pred_cor <- benchmark_df %>%
+      mutate(pred=factor(pred, levels=c("NegLFC", "NotDA", "PosLFC"), ordered = TRUE)) %>%
+      mutate(pred=as.numeric(pred)) %>%
+      summarise(cor(pred, true_prob))
+    ## Swap outcomes if so
+    if (!is.na(pred_cor)) {
+      if (pred_cor < - 0.1) {
+        benchmark_df <- mutate(benchmark_df, pred = ifelse(pred=="NegLFC", "PosLFC", ifelse(pred=="PosLFC", "NegLFC", "NotDA")))
+      }
+    }
+    benchmark_df %>%
+      mutate(id=i)
+    })
+  
+  res_df <- res_ls  %>%
+    purrr::reduce(bind_rows) 
+  # %>%
+  #   select(true_prob, pred, method) 
+  
+  return(res_df)  
+}
+
+embryo_res_df <- read4_prob_hist("embryo")
+```
+
+Plot distribution of P(C1) in cells identified as DA by different methods
+
+```{r, fig.height=8, fig.width=18}
+calculate_quantile_thresh <- function(res_df){
+  return(quantile(1-res_df[res_df$method=="milo_red",][["true_prob"]], probs = seq(0,1, by=0.25))["75%"])
+}
+
+plot_p_hist <- function(res_df){
+  ## Calculate threshold
+  thresh <- calculate_quantile_thresh(res_df)
+  
+  ## Plot histogram of p(C1) for predicted DA cells
+  p <- res_df %>%
+    dplyr::filter(pred!="NotDA") %>%
+    # mutate(color=ifelse(true_prob==0.5, "0.5","0")) %>%
+    ggplot(aes(1 - true_prob)) +
+    # geom_density(aes(color=pred)) +
+    facet_grid(method~pred, scales="free_y", labeller=pl_labeller) +
+    geom_histogram(bins=50, aes(fill=pred)) +
+    xlab("P(C1)") + ylab("# DA cells") +
+    theme_bw(base_size=16) +
+    scale_fill_brewer(palette="Set1", name="Predicted effect") +
+    geom_vline(xintercept = thresh, linetype=2) 
+  p
+}
+
+# plot_p_hist(cluster_res_df) + ggtitle("clusters") 
+plot_p_hist(embryo_res_df) + ggtitle("embryo") +
+  plot_layout(guides="collect")
+```
+
+```{r, fig.height=5, fig.width=16}
+plot_thresh_hist <- function(linear_res_df){
+  quants <- quantile(1-linear_res_df$true_prob, seq(0, 1, 0.05))
+  keep_quants <- c("25%", "50%",  "90%", "95%")
+  linear_res_df %>%
+    filter(method=="milo") %>%
+      ggplot(aes(1 - true_prob)) +
+      geom_histogram(bins=50) +
+      xlab("P(C1)") + ylab("# cells") +
+      theme_bw(base_size=16) +
+      scale_fill_brewer(palette="Set1", name="Predicted effect") +
+      geom_vline(xintercept = quants[keep_quants], linetype=2) +
+    coord_cartesian(clip = 'off') +
+    annotate('text', x=quants[keep_quants], y=Inf, label=(keep_quants), hjust=0, vjust=0, angle=60) +
+    geom_vline(xintercept = quants["75%"], linetype=2, color="red") +
+    annotate('text', x=quants["75%"], y=Inf, label="75%", hjust=0, vjust=0, angle=60, color="red") +
+    annotate('text', x=Inf, y=Inf, label=paste('t =', round(quants["75%"], 3)), hjust=1.1, vjust=1.5, angle=0, color='red', size=5) +
+    theme(plot.margin = unit(c(1,0.5,1,0.5), "cm"), title = element_text(vjust = 1)) 
+}
+```
+
+Use 75% quantile of P(C1) in all cells to define threshold for true DA
+
+```{r}
+embryo_thresh <- calculate_quantile_thresh(embryo_res_df)
+```
+
+Some utils
+
+```{r}
+.outcome_by_prob <- function(benchmark_df, da_upper){
+  DA_thresh <- 1 - da_upper
+  benchmark_df <- benchmark_df %>%
+    mutate(true = ifelse(benchmark_df$true_prob < DA_thresh, "NegLFC", ifelse(benchmark_df$true_prob > 1-DA_thresh, "PosLFC", "NotDA"))) 
+  if (benchmark_df$method[1]=="meld") {
+    benchmark_df <- mutate(benchmark_df, pred = ifelse(Condition2 < DA_thresh, "NegLFC", "NotDA")) 
+  }
+  ## Check if conditions were swapped in test
+  pred_cor <- benchmark_df %>%
+    group_by(pred) %>%
+    summarise(m=mean(true_prob)) %>%
+    ungroup() %>%
+    mutate(pred=factor(pred, levels=c("NegLFC", "NotDA", "PosLFC"), ordered = TRUE)) %>%
+    mutate(pred=as.numeric(pred)) %>%
+    summarise(c=cor(pred, m)) %>%
+    pull(c)
+  ## Swap outcomes if so
+  if (!is.na(pred_cor)) {
+    if (pred_cor < 0) {
+      benchmark_df <- mutate(benchmark_df, pred = ifelse(pred=="NegLFC", "PosLFC", ifelse(pred=="PosLFC", "NegLFC", "NotDA")))
+    }
+  }
+  calculate_outcome(benchmark_df)
+}
+
+plot_outcome_umap <- function(sce, method, pop, enr, seed, batchEffect, true=FALSE, data_id="embryo", 
+                              red_dim="umap_batch",
+                              rasterize=FALSE){
+  coldata_file <- list.files(indir, pattern=paste0(".+",data_id,"_pop_",  pop,"_enr",enr,"_seed", seed, ".coldata.csv"),
+                           full.names = TRUE)
+  colData(sce) <- read_csv(coldata_file) %>% column_to_rownames() %>% DataFrame()
+  
+  res_file <- list.files(outdir, 
+                         pattern= paste0(".+",data_id,"_pop_", pop,"_enr",enr,"_seed", seed, '.+batchEffect',batchEffect,".DAresults.",method,".csv"),
+                         full.names = TRUE)
+  if (method=="meld") {
+    sce$predicted <- ifelse(read_csv(res_file)[["Condition2"]] < 0.3, "NegLFC", 'NotDA')  
+  } else if (method=="daseq") {
+    sce$predicted <- ifelse(read_csv(res_file)[["pred"]] == "NegLFC", 'PosLFC', ifelse(read_csv(res_file)[["pred"]] == "PosLFC", "NegLFC", "NotDA"))
+  } else {
+    sce$predicted <- read_csv(res_file)[["pred"]]
+  }
+  if (true) {
+    pl <- data.frame(reducedDim(sce, red_dim)) %>%
+    dplyr::rename_all( ~ c("UMAP1", "UMAP2") ) %>%
+    mutate(true=sce$Condition1_prob) %>%
+    arrange(true) %>%
+    ggplot(aes(UMAP1, UMAP2, color=true)) + 
+    geom_point(size=0.1) +
+      scale_color_viridis_c(name="C1 probability", limits=c(0.5,0.9)) +
+     theme_classic(base_size=18) +
+      guides(color=guide_colorbar(title.position="top", title.hjust = 0.5)) +
+     theme(axis.ticks = element_blank(),
+           axis.text = element_blank(),
+           legend.position = "top") +
+     xlab("UMAP1") + ylab("UMAP2") 
+  } else {
+    pl <- data.frame(reducedDim(sce, red_dim)) %>%
+    dplyr::rename_all( ~ c("UMAP1", "UMAP2") ) %>%
+    dplyr::mutate(method=method) %>%
+    dplyr::mutate(predicted=factor(sce$predicted, levels=c("NegLFC", "PosLFC", 'NotDA'))) %>%
+    dplyr::arrange(- predicted) %>%
+    ggplot(aes(UMAP1, UMAP2, color=predicted)) + 
+    geom_point(size=0.1) +
+    geom_point(data= . %>% filter(predicted!="NotDA"), size=0.2) +
+     scale_color_manual(values=c(NegLFC="red", NotDA="grey", PosLFC="blue"), 
+                        labels=c(NegLFC="Enriched in C1", NotDA="No DA", PosLFC="Depleted in C1"), name='') +
+     guides(color = guide_legend(override.aes = list(size=1))) +
+     theme_classic(base_size=18) +
+     theme(legend.position=c(.15,.2), axis.ticks = element_blank(),
+           axis.text = element_blank()) +
+      facet_wrap(method~.)  
+  }
+  if (rasterize) {
+    pl <- pl + rasterize(geom_point(size=0.1), dpi = 300)
+  }
+  pl
+}
+
+## Convert condition probability to LFC
+prob2FC <- function(prob){
+  log((prob)/(1 - prob))
+}
+```
+
+Next step:
+
+1. Run 'build_outcome.R'. Use embryo_thresh value to set threshold in build_outcome.R.
+2. Copy output file 'outcome_embryo_batchEffect0.csv' to a local directory.
+
+## Embryo data
+
+### W/o batch effect
+
+Read outcome for embryo (built with wrapper `build_outcome.R`).
+
+```{r}
+outcome_df <- read_csv("/Users/kluzer01/Documents/milo_analysis_2022/Figure_1/benchmark/data/output_benchmark/outcome_embryo_batchEffect0.csv")
+```
+
+```{r, fig.width=12, fig.height=5}
+# enr_labeller2 <- function(variable, value, split_lines=FALSE){
+#   fc <- round(prob2FC(as.numeric(value)), 2)
+#   enr_name <- paste("logFC = ", fc)
+#   return(enr_name)
+# }
+pl_df <- outcome_df %>% 
+   filter(batchEffect==0 & str_detect(method, "_batch", negate = TRUE)) %>% 
+   mutate(FDR = FP/(TP+FP)) %>% 
+   mutate(TPR=ifelse(is.nan(TPR), 0, TPR), 
+          FPR=ifelse(is.nan(FPR), 0, FPR), 
+          FDR=ifelse(is.nan(FDR), 0, FDR), 
+          Precision=ifelse(is.nan(Precision), 0, Precision)) %>% 
+   filter(batchEffect==0)  %>% 
+   mutate(enr=as.character(enr))  
+
+p_top <- pl_df %>%
+  filter(batchEffect=="0") %>%
+  ggplot(aes(as.factor(round(prob2FC(as.numeric(enr)),1)), TPR, color=method)) +
+  geom_boxplot(outlier.alpha = 0, alpha =1) +
+  ggbeeswarm::geom_quasirandom(alpha=1, position="stack", size=0.5) +
+  # geom_hline(yintercept = 0.1, linetype=2) +
+  theme_bw(base_size = 14) +
+  scale_color_manual(values = method_colors, labels=setNames(method_labels, method_names)) +
+  scale_fill_manual(values = method_colors, labels=setNames(method_labels, method_names)) +
+  theme(legend.position = "none", axis.text.x=element_text(colour="black"), axis.text.y=element_text(colour="black")) +
+  facet_grid(.~method, labeller=pl_labeller) +
+  #theme(strip.background =element_rect(fill="grey")) +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), axis.title.x = element_blank())
+
+p_bottom <- pl_df %>%
+  filter(batchEffect=="0") %>%
+  ggplot(aes(as.factor(round(prob2FC(as.numeric(enr)),1)), FDR, color=method)) +
+  geom_boxplot(outlier.alpha = 0, alpha =1) +
+  ggbeeswarm::geom_quasirandom(alpha=1, position="stack", size=0.5) +
+  geom_hline(yintercept = 0.1, linetype=2) +
+  theme_bw(base_size = 14) +
+  scale_color_manual(values = method_colors, labels=setNames(method_labels, method_names)) +
+  scale_fill_manual(values = method_colors, labels=setNames(method_labels, method_names)) +
+  theme(legend.position = "none", axis.text.x=element_text(colour="black"), axis.text.y=element_text(colour="black")) +
+  facet_grid(.~method, labeller=pl_labeller) +
+  xlab('Simulated log fold change') +
+  ylim(c(0, 1))
+
+(p_top / p_bottom) + plot_layout(guides="collect") 
+ggsave("fig1cc.tiff", path = "/Users/kluzer01/Desktop/figures/", height = 4.5, width = 5, device='tiff', dpi=700)
+
+```
+
+
+#### Explain variability in performance across different populations
+
+Due to low signal to noise ratio for certain simulations
+
+```{r}
+## Read outputs
+outdir <- "/Users/kluzer01/Documents/milo_analysis_2022/Figure_1/benchmark/data/output_benchmark"
+res_files <- list.files(outdir, pattern=".DAresults")
+res_files_full <- list.files(outdir, pattern=".DAresults", full.names = TRUE)
+
+## Make data frame w benchmark parameters
+out_meta_df <- data.frame(file_id = str_remove_all(res_files, "benchmark_embryo_pop_|.csv")) %>%
+  separate(col = file_id, sep = ".DAresults.", into=c("file_id", "method")) %>%
+  separate(col = file_id, sep = "_enr", into=c("pop", "file_id")) %>%
+  separate(col = file_id, sep = "_", into=c("enr", "seed", "batchEffect")) %>%
+  mutate(seed=str_remove(seed, "seed"), batchEffect=str_remove_all(batchEffect, "batchEffect")) 
+
+embryo_thresh <- 0.5406022
+no_batch_files <- str_detect(res_files_full, "batchEffect0.DAresult")
+
+## Read benchmark results w/o batch effects and selecting just top and bottom population
+keep_pops <- c("Erythroid2", "Gut")
+keep_files <- str_detect(res_files_full, "batchEffect0.DAresult") &
+  str_detect(res_files_full, paste0(keep_pops, collapse = "|"))
+suppressWarnings({
+  outcome_df_2 <- lapply(seq_along(res_files_full[keep_files]), function(i){ 
+    print(paste("Outcome no. ", i))
+    benchmark_df <- read_csv(res_files_full[keep_files][i])
+    pop_enr <- as.numeric(out_meta_df[keep_files,][i,"enr"])
+    benchmark_df <- benchmark_df %>%
+      mutate(true = ifelse(benchmark_df$true_prob < 1-embryo_thresh, "NegLFC", ifelse(benchmark_df$true_prob > embryo_thresh, "PosLFC", "NotDA"))) 
+    
+    ## Check if conditions were swapped in test
+    pred_cor <- benchmark_df %>%
+      group_by(pred) %>%
+      summarise(m=mean(true_prob)) %>%
+      ungroup() %>%
+      mutate(pred=factor(pred, levels=c("NegLFC", "NotDA", "PosLFC"), ordered = TRUE)) %>%
+      mutate(pred=as.numeric(pred)) %>%
+      summarise(c=cor(pred, m)) %>%
+      pull(c)
+    ## Swap outcomes if so
+    if (!is.na(pred_cor)) {
+      if (pred_cor < 0) {
+        benchmark_df <- mutate(benchmark_df, pred = ifelse(pred=="NegLFC", "PosLFC", ifelse(pred=="PosLFC", "NegLFC", "NotDA")))
+      }
+    }
+   
+    benchmark_df %>%
+      mutate(prob_bins=cut(1-true_prob, breaks = seq(0.3, 1, by=0.05), include.lowest = TRUE, right=FALSE)) %>%
+        group_by(prob_bins) %>%
+        do(calculate_outcome(.)) %>%
+        ungroup() %>%
+        dplyr::select(- method) %>%
+        bind_cols(out_meta_df[keep_files,][i,]) 
+    }) %>%
+    purrr::reduce(bind_rows)
+})
+outcome_df_2
+```
+
+
+```{r, fig.height=7, fig.width=12}
+pl_df <- outcome_df_2 %>% 
+  mutate(prob_bins= seq(0.3, 1, by=0.05)[as.numeric(outcome_df_2$prob_bins)]) %>%
+   filter(batchEffect==0 & str_detect(method, "_batch", negate = TRUE)) %>% 
+   mutate(TPR=TP/(TP+FN), FPR=FP/(FP+TN)) %>% 
+   mutate(TPR=ifelse(is.nan(TPR), 0, TPR), 
+          FPR=ifelse(is.nan(FPR), 0, FPR),
+          ) %>% 
+   # filter(prob_bins >= 0.55 & batchEffect==0)  %>% 
+   mutate(enr=as.character(enr))  %>%
+  filter(pop %in% c("Erythroid2", "Gut"))
+
+p_top <- pl_df %>%
+  filter(batchEffect=="0") %>%
+  ggplot(aes(as.factor(prob_bins), TPR, color=pop, shape=pop)) +
+  ggbeeswarm::geom_quasirandom(alpha=0.3, position="stack", size=0.5) +
+  geom_point(data = . %>% group_by(method, pop, prob_bins) %>% summarise(TPR=mean(TPR)), size=2,
+                          position=position_dodge(width=0.5)) +
+  theme_bw(base_size = 14) +
+ #scale_shape_manual("Population", labels = c("X", "Y")) +
+  facet_grid(.~method, labeller=pl_labeller) + 
+  theme(axis.text.x = element_text(angle=90, colour="black"), legend.position = "none", axis.text.y=element_text(colour="black")) +
+  scale_color_brewer(palette="Set1") +
+  remove_x_axis() 
+
+p_middle <- pl_df %>%
+  filter(batchEffect=="0") %>%
+  ggplot(aes(as.factor(prob_bins), FPR, color=pop, shape=pop)) +
+  # geom_violin(scale="width") +
+  ggbeeswarm::geom_quasirandom(alpha=0.3, position="stack", size=0.5) +
+  geom_point(data = . %>% group_by(method, pop, prob_bins) %>% summarise(FPR=mean(FPR, na.rm = TRUE)), size=2,  
+             position=position_dodge(width=0.5)) +
+  theme_bw(base_size = 14) +
+  scale_color_brewer(palette="Set1", labels = c("Erythroid", "Gut")) +
+  facet_grid(.~method, labeller=pl_labeller) + 
+  scale_shape_discrete(labels = c("Erythroid", "Gut")) +
+  geom_hline(yintercept = 0.1, linetype=2) +
+  xlab("P(C1) bins") +
+  theme(axis.text.x = element_text(angle=90, hjust=1, vjust=0.5, colour="black"), legend.position = "top", axis.text.y=element_text(colour="black")) 
+
+pl_A <- p_top / p_middle  +
+  plot_layout(guides="collect") +
+  theme(legend.position="left") +
+  labs(col="Population", shape="Population") 
+pl_A
+
+ggsave("fig1dleg.tiff", path = "/Users/kluzer01/Desktop/figures/", height = 4.5, width = 7, device='tiff', dpi=700)
+```
+
+
+```{r, fig.height=6, fig.width=8}
+outcome_df <- read_csv("/Users/kluzer01/Documents/milo_analysis_2022/Figure_1/benchmark/data/output_benchmark/outcome_embryo_batchEffect0.csv")
+embryo_thresh <- 0.5406022
+
+setwd("/Users/kluzer01/Documents/Milo2.0/R_scripts/milo_analysis_2020/benchmark/data/output_benchmark/")
+pl_signal2noise <- function(mypop, myenr, myseed, mymethod){
+    if (mymethod=="daseq") {
+    pos_outcome <- "PosLFC"
+  } else {
+    pos_outcome <- "NegLFC"
+  }
+  popTPR <- outcome_df %>% filter(pop==mypop & enr==myenr & seed==myseed & method==mymethod) %>% pull(TPR)
+  res_file <- list.files("/Users/kluzer01/Documents/milo_analysis_2022/Figure_1/benchmark/data/output_benchmark/", 
+                           pattern= paste0(".+",'embryo',"_pop_", mypop, "_enr",myenr,"_seed", myseed, '.+batchEffect0',".DAresults.",mymethod,".csv"),
+                           full.names = TRUE)
+  
+  pl <- read_csv(res_file) %>%
+    mutate(outcome = case_when(pred=="NotDA" & true_prob < 1-embryo_thresh ~ "FN",
+                          pred==pos_outcome & true_prob < 1-embryo_thresh ~ "TP",
+                          pred=="NotDA" & true_prob > 1-embryo_thresh ~ "TN"
+                          )) %>%
+    filter(outcome %in% c('TP', "FN")) %>%
+    ggplot(aes(1 - true_prob, color=outcome)) +
+    geom_density(size=1) +
+    xlab("P(C1)") +
+    ggtitle(paste("TPR = ", round(popTPR,2))) +
+    theme_bw(base_size = 14)
+  pl
+}
+pl_top <- wrap_plots(lapply(c(0.75, 0.85, 0.95), function(x) pl_signal2noise("Erythroid2", x, myseed = 43, mymethod = "milo_red")), ncol=3)
+pl_bot <- wrap_plots(lapply(c(0.75, 0.85, 0.95), function(x) pl_signal2noise("Caudal_neurectoderm", x, myseed = 43, mymethod = "milo_red")), ncol=3)
+pl_B <- (pl_top / pl_bot) +
+  plot_layout(guides = "collect") 
+pl_B
+```
+
