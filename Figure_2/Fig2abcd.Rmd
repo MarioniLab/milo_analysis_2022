@@ -14,10 +14,10 @@ library(tibble)
 ```
 
 Here we import and plot elapsed time, memory and k value analyses with 200,000 cell dataset.
-To generate the data, run 'benchmark_speed.R'
+To generate the data, run 'benchmark_speed.R' using 'benchmark_speed.sh'
 
 ```{r}
-time_df <- read_csv("/Users/kluzer01/Documents/Milo2.0/R_scripts/data/time_df.csv")
+time_df <- read.csv("/Users/kluzer01/Documents/milo_analysis_2022/Figure_2/time_df.csv")
 time.df2 <- pivot_longer(data.frame(time_df), cols = c(reduced_dim, graph), names_to = "method")
 ggplot(time.df2, aes(x=(n_cells), y=value/60, group_by = method, fill = method)) +
     theme_bw(base_size=16) +
@@ -29,60 +29,52 @@ ggplot(time.df2, aes(x=(n_cells), y=value/60, group_by = method, fill = method))
     scale_x_continuous(limits = c(30000, 210000), labels = c("50,000", "100,000", "150,000", "200,000"), breaks = c(50000, 100000, 150000, 200000))
 
 ggsave("fig2alegen.tiff", path = "/Users/kluzer01/Desktop/figures/", height = 4, width = 7, device='tiff', dpi=700)
-
-# check if the relationship is linear -- it is not
-# ggplot(time_df, aes(x=(n_cells), y=graph/60)) +
-#     theme_bw(base_size=16) +
-#     geom_point(shape=23, size=3, alpha=1) +
-#     scale_fill_manual(values = c("#99d594")) +
-#     labs(x="# cells", y="Elapsed time [minutes]") +
-#     scale_x_continuous(breaks = seq(0, 200000, 50000)) +
-#     xlim(c(30000, 210000)) +
-#     geom_text(aes(label=round(graph/60, 1)),hjust=-0.3,vjust=0.5)
-
 ```
 
-Plot memory analysis with 200,000 cells. 
+Plot memory analysis with 200,000 cells. To generate the data, run 'memory_sim.R' using 'benchmark_speed.sh'
 
 ```{r}
-time_df <- read_csv("/Users/kluzer01/Documents/Milo2.0/R_scripts/data/time_df.csv")
-time.df2 <- pivot_longer(data.frame(time_df), cols = c(reduced_dim, graph), names_to = "method")
-ggplot(time.df2, aes(x=(n_cells), y=value/60, group_by = method, fill = method)) +
+mem_df <- read.csv("/Users/kluzer01/Documents/milo_analysis_2022/Figure_2/mem.df")
+mem_df2 <- pivot_longer(data.frame(mem_df), cols = c(reduced_dim, graph), names_to = "method")
+
+ggplot(mem_df2, aes(x=n_cells, y=value, group_by = method, fill = method)) +
     theme_bw(base_size=16) +
     geom_point(shape=21, size=3) +
     scale_fill_manual(values = c("#8da0cb", "#fc8d62"), name="Sampling scheme", labels = c("Graph", "Reduced dim")) +
-    labs(x="Number of cells", y="Elapsed time (min)") +
+    labs(x="Number of cells", y="Maximum memory (MB)") +
     theme(legend.position = "none", axis.text.x=element_text(colour="black"), axis.text.y=element_text(colour="black")) +
-    geom_text(aes(label=round(value/60, 1)),hjust=-0.3,vjust=0.5) +
+    geom_text(aes(label=round(value, 0)),hjust=1.3,vjust=0.5) +
     scale_x_continuous(limits = c(30000, 210000), labels = c("50,000", "100,000", "150,000", "200,000"), breaks = c(50000, 100000, 150000, 200000))
 
-ggsave("fig2a.tiff", path = "/Users/kluzer01/Desktop/figures/", height = 4, width = 4.5, device='tiff', dpi=700)
+ggsave("fig2b.tiff", path = "/Users/kluzer01/Desktop/figures/", height = 4, width = 4.5, device='tiff', dpi=700)
 ```
 
 
-200,000 cells with different values of k: 10, 30, 50, 70
+200,000 cells with different values of k: 10, 30, 50, 70.
+To generate the data, run 'benchmark_speed.R' (bottom section) using 'benchmark_speed.sh'
 
 ```{r}
-time_df <- read_csv("/Users/kluzer01/Documents/Milo2.0/R_scripts/data/time_df.csv")
-time.df2 <- pivot_longer(data.frame(time_df), cols = c(reduced_dim, graph), names_to = "method")
-ggplot(time.df2, aes(x=(n_cells), y=value/60, group_by = method, fill = method)) +
+k_df <- read.csv("/Users/kluzer01/Documents/milo_analysis_2022/Figure_2/k_df3.csv")
+k_df2 <- pivot_longer(data.frame(k_df), cols = c(reduced_dimk, graphk), names_to = "method")
+k_df2 <- na.omit(k_df2)
+ggplot(k_df2, aes(x=(k_val), y=value/60, group_by = method, fill = method)) +
     theme_bw(base_size=16) +
     geom_point(shape=21, size=3) +
     scale_fill_manual(values = c("#8da0cb", "#fc8d62"), name="Sampling scheme", labels = c("Graph", "Reduced dim")) +
-    labs(x="Number of cells", y="Elapsed time (min)") +
+    labs(x="k", y="Elapsed time (min)") +
     theme(legend.position = "none", axis.text.x=element_text(colour="black"), axis.text.y=element_text(colour="black")) +
-    geom_text(aes(label=round(value/60, 1)),hjust=-0.3,vjust=0.5) +
-    scale_x_continuous(limits = c(30000, 210000), labels = c("50,000", "100,000", "150,000", "200,000"), breaks = c(50000, 100000, 150000, 200000))
+    geom_text(aes(label=round(value/60, 1)),hjust=-0.5,vjust=0.5) +
+    scale_y_continuous(limits = c(0,65)) +
+    scale_x_continuous(limits = c(0, 100), labels = c("10", "30", "50", "70", "90"), breaks = c(10, 30, 50, 70, 90))
 
-ggsave("fig2a.tiff", path = "/Users/kluzer01/Desktop/figures/", height = 4, width = 4.5, device='tiff', dpi=700)
+ggsave("fig2c.tiff", path = "/Users/kluzer01/Desktop/figures/", height = 4, width = 4.5, device='tiff', dpi=700)
 ```
 
 Here we import and plot Milo+ speed on a million cell dataset, with 3 different values of k.
-To generate this data, run  
-
+To generate this data, run 'benchmark_million.R' using 'benchmark_speed.sh'
 
 ```{r}
-time_df <- read_csv("/Users/kluzer01/Documents/Milo2.0/R_scripts/data/time_millioncells.csv")
+time_df <- read_csv("/Users/kluzer01/Documents/milo_analysis_2022/Figure_2/time_millioncells.csv")
 ggplot(time_df, aes(x=as.factor(k_val), y=graph/60)) +
     theme_bw(base_size=16) +
     geom_point(shape=21, size=3, alpha=1, fill = "#8da0cb") +
@@ -91,7 +83,6 @@ ggplot(time_df, aes(x=as.factor(k_val), y=graph/60)) +
     ylim(c(0, 100)) +
     geom_text(aes(label=round(graph/60, 1)),hjust=-0.4,vjust=0.5) 
 ggsave("fig2d.tiff", path = "/Users/kluzer01/Desktop/figures/", height = 4, width = 4.5, device='tiff', dpi=700)
-
 ```
 
 
