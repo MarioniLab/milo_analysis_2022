@@ -16,7 +16,6 @@ library(MouseGastrulationData)
 library(BiocNeighbors)
 ```
 
-
 ```{r warning=FALSE, message=FALSE}
 # mouse gatrulation data from MouseGastrulationData package, as in vignette
 select_samples <- c(2,  3, 6, 15,
@@ -143,40 +142,71 @@ bind_rows(
   xlab("distance to closest NH index") +
   ylab("Cum. fraction") +
   theme_bw(base_size=16)
+
+ggsave("supp1a.tiff", path = "/Users/kluzer01/Desktop/figures/", height = 4, width = 9, device='tiff', dpi=700)
+
+```
+
+Using simulated data, show P values using graph and reduced_dim methods. 
+
+```{r}
+# load data
+data("sim_trajectory", package = "miloR")
+
+# extract SingleCellExperiment object
+traj_sce <- sim_trajectory[['SCE']]
+
+# extract sample metadata
+traj_meta <- sim_trajectory[["meta"]]
+
+# add metadata to colData
+colData(traj_sce) <- DataFrame(traj_meta)
+
+# normalize and calculate principal components
+logcounts(traj_sce) <- log(counts(traj_sce) + 1)
+traj_sce <- runPCA(traj_sce, ncomponents=30)
+set.seed(5)
+traj_sce <- runUMAP(traj_sce)
+plotUMAP(traj_sce)
+
+# create milo object
+traj_milo_raw <- Milo(traj_sce)
+reducedDim(traj_milo_raw, "UMAP") <- reducedDim(traj_sce, "UMAP")
+
+set.seed(NULL)
+# run through milo pipeline using parameters from vignette
+traj_milo <- miloR::buildGraph(traj_milo_raw, k = 10, d = 30)
+traj_milo <- miloR::makeNhoods(traj_milo, prop = 0.1, k = 10, d=30, refined = TRUE)
+traj_milo <- miloR::countCells(traj_milo, meta.data = data.frame(colData(traj_milo)), sample="Sample")
+
+# create design matrix to explain experimental design 
+traj_design <- data.frame(colData(traj_milo))[,c("Sample", "Condition")]
+traj_design <- distinct(traj_design)
+rownames(traj_design) <- traj_design$Sample
+## Reorder rownames to match columns of nhoodCounts(milo)
+traj_design <- traj_design[colnames(nhoodCounts(traj_milo)), , drop=FALSE]
+
+#compute p values with original reduced_dim implementation 
+traj_milo_dist <- calcNhoodDistance(traj_milo, d=30)
+da_results <- testNhoods(traj_milo_dist, design = ~ Condition, design.df = traj_design, fdr.weighting = "k-distance")
+da_results2 <- testNhoods(traj_milo, design = ~ Condition, design.df = traj_design, fdr.weighting = "graph-overlap")
 ```
 
 ```{r}
-nh_coverage %>%
-  dplyr::mutate(refined=factor(refined, levels = c("random", "reduced_dim", "graph"))) %>%
-  ggplot(aes(x = prop, y = coverage_proportion, fill = refined))+
-  geom_line()+
-  geom_point(shape=21, color = "black", size = 4)+
-  coord_cartesian(ylim = c(0,1))+
-  facet_wrap(~seed, ncol = 3)+
-  scale_fill_brewer(palette = "Spectral")+
-  theme_bw(base_size=16)
-```
+results <- cbind.data.frame(da_results$Nhood, da_results$SpatialFDR, da_results2$SpatialFDR)
+results_plot <- pivot_longer(results, cols = c(2,3))
+colnames(results_plot) <- c("Nhoods", "method", "value")
 
-```{r}
-nh_coverage_distribution %>%
-  dplyr::filter(seed == 43) %>%
-  dplyr::group_by(refined, prop, seed) %>%
-  dplyr::mutate(drank = dense_rank(desc(occurrences))) %>%
-  dplyr::mutate(refined=factor(refined, levels = c("random", "reduced_dim", "graph"))) %>%
-  ggplot(aes(x = occurrences, group = refined, fill = refined))+
-  geom_density(alpha = 0.3)+
-  scale_fill_brewer(palette = "Spectral", labels = c("random", "reduced_dim", "graph"))+
-  theme_bw(base_size = 16)+
-  facet_wrap(~prop, scales = "free_y")
-```
+ggplot(results_plot, aes(x =as.factor(Nhoods), y = -log10(value), fill = method)) +
+  geom_point(aes(shape = method, size = method)) + 
+  xlab("Neighborhood") +
+  ylab("-log(*P*-value)") + 
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed") +
+  theme_bw(base_size=18) + 
+  theme(legend.position="top", axis.text.x=element_text(colour="black"), axis.text.y=element_text(colour="black"), axis.title.y = ggtext::element_markdown()) +
+  scale_fill_manual(values=c("#FC8D62", "#8DA0CB"), name="Spatial FDR correction", labels = c("k-distance", "graph-overlap")) +
+  scale_shape_manual(values = c(21,4), name="Spatial FDR correction", labels = c("k-distance", "graph-overlap")) +
+  scale_size_manual(values = c(2.5,3), name="Spatial FDR correction", labels = c("k-distance", "graph-overlap")) 
 
-```{r}
-nh_stats %>%
-  dplyr::filter(seed == 43) %>%
-  dplyr::mutate(refined=factor(refined, levels = c("random", "reduced_dim", "graph"))) %>%
-  ggplot(aes(x = prop, y = elapsed_time,  group = refined, fill = refined))+
-  geom_line(colour = "black")+
-  geom_point(shape = 21, colour = "black", size = 5)+
-  scale_fill_brewer(palette = "Spectral", labels = c("random", "reduced_dim", "graph"))+
-  theme_bw(base_size = 16)
+ggsave("supp1b.tiff", path = "/Users/kluzer01/Desktop/figures/", height = 5, width = 9, device='tiff', dpi=700)
 ```
