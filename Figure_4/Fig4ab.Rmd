@@ -215,7 +215,7 @@ glmmWrapperTMB <- function(sim.df){
                      "sigma"=unlist(var$cond),
                      "se"=unname(se[1:2]))
 }
-glmm.sim.listTMB <- lapply(sim.list, glmmWrapperTMB)
+a <- system.time(glmm.sim.listTMB <- lapply(sim.list, glmmWrapperTMB))
 
 glmmWrapperREML <- function(sim.df){
     z.model <- sapply(sim.df[,4, drop = FALSE], as.numeric)
@@ -224,14 +224,34 @@ glmmWrapperREML <- function(sim.df){
     rand.levels <- lapply(seq_along(colnames(z.model)), FUN=function(X) unique(z.model[, X]))
     names(rand.levels) <- colnames(z.model)
 
-    model.list <- runGLMM(X=x.model, Z=z.model, y=y.model, random.levels=rand.levels, REML = TRUE, 
+    model.list <- fitGLMM(X=x.model, Z=z.model, y=y.model, random.levels=rand.levels, REML = TRUE, 
                     dispersion=r.dispersion, glmm.control=list(theta.tol=1e-6, max.iter=20))
 
     out.list <- list("coefficients"=c(model.list$FE, model.list$RE),
                          "sigma"=model.list$Sigma, 
                      "se"=model.list$SE)
 }
-glmm.sim.listREML <- lapply(sim.list, glmmWrapperREML)
+b <- system.time(glmm.sim.listREML <- lapply(sim.list, glmmWrapperREML))
+
+glmmWrapperPQL <- function(sim.df){
+    glmm.pql <- glmmPQL(Mean.Count ~ FE1, random = ~ 1 | RE1, data = sim.df, family=nbinom2(link="log"))
+    var <- VarCorr(glmm.pql)
+    se <- sqrt(diag(vcov(glmm.pql,full=TRUE)))
+    out.list <- list("coefficients"=glmm.pql$coefficients$fixed,
+                     "sigma"=as.numeric(var[1,1]),
+                     "se"=unname(se[1:2]))
+}
+c <- system.time(glmm.sim.listPQL <- lapply(sim.list, glmmWrapperPQL))
+
+glmmWrapperGLMER <- function(sim.df){
+    glmer1 <- glmer(Mean.Count ~ FE1 + (1|RE1), data = sim.df, family=nbinom2(link="log"))
+    var <- VarCorr(glmer1)
+    se <- sqrt(diag(vcov(glmer1,full=TRUE)))
+    out.list <- list("coefficients"=glmer1@beta,
+                     "sigma"=as.numeric(var$RE1),
+                     "se"=unname(se[1:2]))
+}
+d <- system.time(glmm.sim.listGLMER <- lapply(sim.list, glmmWrapperGLMER))
 ```
 
 Plot glmm vs TMB for B1 slope estimates and standard error estimates. 
@@ -259,33 +279,54 @@ colnames(coeff_mat) <- c("sigma", "se.int", "se.fe", "int", "fe", "ground_truth"
 coeff_mat$analysis <- "nb_glmm_REML"
 coeff_pivoted2 <- pivot_longer(coeff_mat, cols = 1:5)
 
-to_plot <- rbind.data.frame(coeff_pivoted, coeff_pivoted2)
+coeff <- lapply(glmm.sim.listPQL, `[[`, 1)
+sigma <- lapply(glmm.sim.listPQL, `[[`, 2)
+se <- lapply(glmm.sim.listPQL, `[[`, 3)
+coeff_mat <- t(data.frame(matrix(unlist(coeff), nrow=2)))[,1:2]
+se_mat <- t(data.frame(matrix(unlist(se), nrow=2)))
+coeff_mat <- data.frame(cbind(unlist(sigma), se_mat, coeff_mat))
+coeff_mat$ground_truth <- as.numeric(names(glmm.sim.listTMB))
+colnames(coeff_mat) <- c("sigma", "se.int", "se.fe", "int", "fe", "ground_truth")
+coeff_mat$analysis <- "nb_glmm_PQL"
+coeff_pivoted3 <- pivot_longer(coeff_mat, cols = 1:5)
+
+coeff <- lapply(glmm.sim.listGLMER, `[[`, 1)
+sigma <- lapply(glmm.sim.listGLMER, `[[`, 2)
+se <- lapply(glmm.sim.listGLMER, `[[`, 3)
+coeff_mat <- t(data.frame(matrix(unlist(coeff), nrow=2)))[,1:2]
+se_mat <- t(data.frame(matrix(unlist(se), nrow=2)))
+coeff_mat <- data.frame(cbind(unlist(sigma), se_mat, coeff_mat))
+coeff_mat$ground_truth <- as.numeric(names(glmm.sim.listTMB))
+colnames(coeff_mat) <- c("sigma", "se.int", "se.fe", "int", "fe", "ground_truth")
+coeff_mat$analysis <- "nb_glmm_GLMER"
+coeff_pivoted4 <- pivot_longer(coeff_mat, cols = 1:5)
+
+to_plot <- rbind.data.frame(coeff_pivoted, coeff_pivoted2, coeff_pivoted3, coeff_pivoted4)
 to_plot_f <- dplyr::filter(to_plot, name =="fe")
 to_plot_s <- dplyr::filter(to_plot, name =="se.fe")
 
 ggplot(to_plot_f, aes(y = value, x = as.factor(ground_truth), group = analysis)) +
-    geom_bar(width = 0.8, stat = "identity", color = "black", position = position_dodge(), aes(fill=analysis)) +
+    geom_bar(width = 0.7, stat = "identity", color = "black", position = position_dodge(), aes(fill=analysis)) +
     theme_bw() +
     xlab("Ground truth \u03B21") +
-    ylab("Estimated \u03B21") +
-    theme(legend.position = "none", axis.text.x=element_text(colour="black"), axis.text.y=element_text(colour="black")) +
-    theme(text = element_text(size = 16)) +
+    ylab(expression(hat("\u03B21"))) +
+    theme(legend.position = "none", axis.text.x=element_text(colour="black"), axis.text.y=element_text(colour="black"), text = element_text(size = 18)) +
     scale_y_continuous(limits = c(0, 1), breaks = seq(0.1, 1, 0.2), expand = c(0,0)) +
-    scale_fill_manual(values = c("#8da0cb", "grey"), name="Model", labels = c("GLMM", "TMB"))
+    scale_fill_manual(values = c("#A78DB4", "#BEBEBE", "#8DA0CB", "#83A98A"), name="Model", labels = c("lme4:glmer", "MASS::glmmPQL", "miloR::NB-GLMM", "glmmTMB"))
 
 ggsave("fig4a.tiff", path = "/Users/kluzer01/Desktop/figures/", height = 4, width = 4.5, device='tiff', dpi=700)
 
 ggplot(to_plot_s, aes(y = value, x = as.factor(ground_truth), group = analysis)) +
-    geom_bar(width = 0.8, stat = "identity", color = "black", position = position_dodge(), aes(fill=analysis)) +
+    geom_bar(width = 0.7, stat = "identity", color = "black", position = position_dodge(), aes(fill=analysis)) +
     theme_bw() +
     xlab("Ground truth \u03B21") +
-    ylab("Estimated \u03B21 SE") +
-    theme(legend.position = "none", axis.text.x=element_text(colour="black"), axis.text.y=element_text(colour="black")) +
-    theme(text = element_text(size = 16)) +
+    ylab(expression(widehat("\u03B21 SE"))) +
+    theme(legend.position = "top", axis.text.x=element_text(colour="black"), axis.text.y=element_text(colour="black")) +
+    theme(text = element_text(size = 18)) +
     scale_y_continuous(limits = c(0, 0.08), breaks = seq(0, 0.07, 0.02), expand = c(0,0)) +
-    scale_fill_manual(values = c("#8da0cb", "grey"), name="Model", labels = c("GLMM", "TMB"))
+    scale_fill_manual(values = c("#A78DB4", "#BEBEBE", "#8DA0CB", "#83A98A"), name="Model", labels = c("lme4:glmer", "MASS::glmmPQL", "miloR::NB-GLMM", "glmmTMB"))
 
-ggsave("fig4b.tiff", path = "/Users/kluzer01/Desktop/figures/", height = 4, width = 4.5, device='tiff', dpi=700)
+ggsave("fig4b.tiff", path = "/Users/kluzer01/Desktop/figures/", height = 4, width = 10, device='tiff', dpi=700)
 ```
 
 Next, we want to benchmark the pvalues obtained with the Satterthwaite method. We need to run a version of the glmm algorithm that outputs the final y* values -- these are normally distributed y values.
@@ -728,17 +769,18 @@ plot_longer <- pivot_longer(plot, cols = c("lmer", "glmm", "TMB"))
 plot_longer$method <- rep(c("Satterthwaite", "Satterthwaite", "ANOVA"), 2)
 plot_longer1 <- dplyr::filter(plot_longer, variable == "Intercept")
 
+laber <- c('FE1'=paste0("\U03B2","1"), 'Intercept'=paste0("\U03B2","0"))
 ggplot(plot_longer, aes(y = -log10(value), x = name)) +
-    facet_wrap(~variable, scales = "free") +
+    facet_wrap(~variable, scales = "free", ncol = 1, labeller = as_labeller(laber)) +
     geom_bar(width = 0.8, stat = "identity", color = "black", position = position_dodge(), aes(fill=method)) +
     theme_bw() + 
     xlab("Model") +
-    ylab("-log(pvalue)") +
-    theme(text = element_text(size = 16)) +
+    ylab("-log(*P*-value)") +
+    theme(text = element_text(size = 18)) +
     scale_y_continuous(expand = c(0, 0, 0.2, 0)) +
-    theme(legend.position = "right", axis.text.x=element_text(colour="black"), axis.text.y=element_text(colour="black")) +
+    theme(legend.position = "none", axis.text.x=element_text(colour="black"), axis.text.y=element_text(colour="black"), axis.title.y = ggtext::element_markdown()) +
     scale_fill_manual(values = c("#FFDBA9", "#B0D8F2"), name="Degrees of Freedom")
 
-ggsave("fig4d.tiff", path = "/Users/kluzer01/Desktop/figures/", height = 4, width = 10, device='tiff', dpi=700)
+ggsave("fig4d.tiff", path = "/Users/kluzer01/Desktop/figures/", height = 7, width = 4.5, device='tiff', dpi=700)
 
 ```
