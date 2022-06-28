@@ -1,5 +1,5 @@
 
-This file contains all the code needed to re-create Figures 1b and 1c. 
+This file contains all the code needed to re-create Figures 1b. 
 
 ```{r echo=TRUE, results='hide'}
 library(ggplot2)
