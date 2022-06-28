@@ -14,7 +14,8 @@ library(tibble)
 ```
 
 Here we import and plot elapsed time, memory and k value analyses with 200,000 cell dataset.
-To generate the data, run 'benchmark_speed.R' using 'benchmark_speed.sh'
+
+To start with, we plot elapsed data. To generate the data, run 'benchmark_speed.R' using 'benchmark_speed.sh'
 
 ```{r}
 time_df <- read.csv("/Users/kluzer01/Documents/milo_analysis_2022/Figure_2/time_df.csv")
@@ -31,7 +32,7 @@ ggplot(time.df2, aes(x=(n_cells), y=value/60, group_by = method, fill = method))
 ggsave("fig2alegen.tiff", path = "/Users/kluzer01/Desktop/figures/", height = 4, width = 7, device='tiff', dpi=700)
 ```
 
-Plot memory analysis with 200,000 cells. To generate the data, run 'memory_sim.R' using 'benchmark_speed.sh'
+Next, plot memory analysis with 200,000 cells. To generate the data, run 'memory_sim.R' using 'benchmark_speed.sh' (make sure to change the file name from benchmark_speed.R to memory_sim.R).
 
 ```{r}
 mem_df <- read.csv("/Users/kluzer01/Documents/milo_analysis_2022/Figure_2/mem.df")
@@ -50,8 +51,8 @@ ggsave("fig2b.tiff", path = "/Users/kluzer01/Desktop/figures/", height = 4, widt
 ```
 
 
-200,000 cells with different values of k: 10, 30, 50, 70.
-To generate the data, run 'benchmark_speed.R' (bottom section) using 'benchmark_speed.sh'
+Next, plot 200,000 cells with different values of k: 10, 30, 50, 70.
+To generate the data, run 'benchmark_speed.R' (bottom section that is currently commented out) using 'benchmark_speed.sh' (again, remember to change file name that you are running).
 
 ```{r}
 k_df <- read.csv("/Users/kluzer01/Documents/milo_analysis_2022/Figure_2/k_df3.csv")
@@ -70,8 +71,8 @@ ggplot(k_df2, aes(x=(k_val), y=value/60, group_by = method, fill = method)) +
 ggsave("fig2c.tiff", path = "/Users/kluzer01/Desktop/figures/", height = 4, width = 4.5, device='tiff', dpi=700)
 ```
 
-Here we import and plot Milo+ speed on a million cell dataset, with 3 different values of k.
-To generate this data, run 'benchmark_million.R' using 'benchmark_speed.sh'
+Finally, we import and plot Milo+ speed on a million cell dataset, with 3 different values of k.
+To generate this data, run 'benchmark_million.R' using 'benchmark_speed.sh' (change file name).
 
 ```{r}
 time_df <- read_csv("/Users/kluzer01/Documents/milo_analysis_2022/Figure_2/time_millioncells.csv")
