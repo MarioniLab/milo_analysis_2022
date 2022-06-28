@@ -1,0 +1,37 @@
+Error: '/nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/data/benchmark_embryo_pop_Erythroid1_enr0.85_seed44.coldata.csv' does not exist.
+Execution halted
+Rows: 64018 Columns: 24
+── Column specification ────────────────────────────────────────────────────────
+Delimiter: ","
+chr (11): rowname, cell, barcode, stage, theiler, celltype, colour, synth_la...
+dbl (11): sample, pool, sequencing.batch, doub.density, cluster, cluster.sub...
+lgl  (2): doublet, stripped
+
+ℹ Use `spec()` to retrieve the full column specification for this data.
+ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+Rows: 64018 Columns: 51
+── Column specification ────────────────────────────────────────────────────────
+Delimiter: ","
+chr  (1): rowname
+dbl (50): PC1, PC2, PC3, PC4, PC5, PC6, PC7, PC8, PC9, PC10, PC11, PC12, PC1...
+
+ℹ Use `spec()` to retrieve the full column specification for this data.
+ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+Constructing kNN graph with k:50
+Checking valid object
+Running refined sampling with reduced_dim
+Checking valid object
+Running refined sampling with reduced_dim
+Checking meta.data validity
+Counting cells in neighbourhoods
+Checking meta.data validity
+Counting cells in neighbourhoods
+Using TMM normalisation
+Performing spatial FDR correction withk-distance weighting
+Using TMM normalisation
+Using TMM normalisation
+Performing spatial FDR correction withk-distance weighting
+Using TMM normalisation
+Performing spatial FDR correction withk-distance weighting
+Using TMM normalisation
+Performing spatial FDR correction withk-distance weighting

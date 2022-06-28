@@ -1,0 +1,271 @@
+[1] "Loading dataset..."
+[1] "running DA"
+[1] "running milo_red"
+--------------------------------------
+Sender: LSF System <lsf@hl-codon-25-03>
+Subject: Job 726349: <Rscript /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/run_DA_R.R /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/embryo_data_bm.RDS milo_red 45 Mesenchyme --pop_enrichment 0.95 --data_id embryo --k 50 --batchEffect_sd 0> in cluster <codon> Exited
+
+Job <Rscript /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/run_DA_R.R /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/embryo_data_bm.RDS milo_red 45 Mesenchyme --pop_enrichment 0.95 --data_id embryo --k 50 --batchEffect_sd 0> was submitted from host <codon-login-01> by user <akluzer> in cluster <codon> at Sun Apr  3 15:56:13 2022
+Job was executed on host(s) <hl-codon-25-03>, in queue <production>, as user <akluzer> in cluster <codon> at Sun Apr  3 15:56:14 2022
+</homes/akluzer> was used as the home directory.
+</nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark> was used as the working directory.
+Started at Sun Apr  3 15:56:14 2022
+Terminated at Sun Apr  3 15:57:35 2022
+Results reported at Sun Apr  3 15:57:35 2022
+
+Your job looked like:
+
+------------------------------------------------------------
+# LSBATCH: User input
+Rscript /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/run_DA_R.R /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/embryo_data_bm.RDS milo_red 45 Mesenchyme --pop_enrichment 0.95 --data_id embryo --k 50 --batchEffect_sd 0
+
+------------------------------------------------------------
+
+Exited with exit code 1.
+
+Resource usage summary:
+
+    CPU time :                                   77.66 sec.
+    Max Memory :                                 5775 MB
+    Average Memory :                             3092.75 MB
+    Total Requested Memory :                     50000.00 MB
+    Delta Memory :                               44225.00 MB
+    Max Swap :                                   -
+    Max Processes :                              4
+    Max Threads :                                6
+    Run time :                                   81 sec.
+    Turnaround time :                            82 sec.
+
+The output (if any) is above this job summary.
+
+
+
+PS:
+
+Read file </nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/data/output_benchmark/milo_bm_embryo_45_milo_red_Mesenchyme_0.err> for stderr output of this job.
+
+[1] "saving output"
+
+------------------------------------------------------------
+Sender: LSF System <lsf@hl-codon-15-02>
+Subject: Job 726329: <Rscript /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/run_DA_R.R /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/embryo_data_bm.RDS milo_red 45 Mesenchyme --pop_enrichment 0.80 --data_id embryo --k 50 --batchEffect_sd 0> in cluster <codon> Done
+
+Job <Rscript /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/run_DA_R.R /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/embryo_data_bm.RDS milo_red 45 Mesenchyme --pop_enrichment 0.80 --data_id embryo --k 50 --batchEffect_sd 0> was submitted from host <codon-login-01> by user <akluzer> in cluster <codon> at Sun Apr  3 15:56:12 2022
+Job was executed on host(s) <hl-codon-15-02>, in queue <production>, as user <akluzer> in cluster <codon> at Sun Apr  3 15:56:13 2022
+</homes/akluzer> was used as the home directory.
+</nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark> was used as the working directory.
+Started at Sun Apr  3 15:56:13 2022
+Terminated at Sun Apr  3 18:34:51 2022
+Results reported at Sun Apr  3 18:34:51 2022
+
+Your job looked like:
+
+------------------------------------------------------------
+# LSBATCH: User input
+Rscript /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/run_DA_R.R /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/embryo_data_bm.RDS milo_red 45 Mesenchyme --pop_enrichment 0.80 --data_id embryo --k 50 --batchEffect_sd 0
+
+------------------------------------------------------------
+
+Successfully completed.
+
+Resource usage summary:
+
+    CPU time :                                   9530.52 sec.
+    Max Memory :                                 9961 MB
+    Average Memory :                             8287.63 MB
+    Total Requested Memory :                     50000.00 MB
+    Delta Memory :                               40039.00 MB
+    Max Swap :                                   -
+    Max Processes :                              4
+    Max Threads :                                101
+    Run time :                                   9518 sec.
+    Turnaround time :                            9519 sec.
+
+The output (if any) is above this job summary.
+
+
+
+PS:
+
+Read file </nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/data/output_benchmark/milo_bm_embryo_45_milo_red_Mesenchyme_0.err> for stderr output of this job.
+
+[1] "saving output"
+
+------------------------------------------------------------
+Sender: LSF System <lsf@hl-codon-35-01>
+Subject: Job 726336: <Rscript /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/run_DA_R.R /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/embryo_data_bm.RDS milo_red 45 Mesenchyme --pop_enrichment 0.85 --data_id embryo --k 50 --batchEffect_sd 0> in cluster <codon> Done
+
+Job <Rscript /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/run_DA_R.R /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/embryo_data_bm.RDS milo_red 45 Mesenchyme --pop_enrichment 0.85 --data_id embryo --k 50 --batchEffect_sd 0> was submitted from host <codon-login-01> by user <akluzer> in cluster <codon> at Sun Apr  3 15:56:12 2022
+Job was executed on host(s) <hl-codon-35-01>, in queue <production>, as user <akluzer> in cluster <codon> at Sun Apr  3 15:56:13 2022
+</homes/akluzer> was used as the home directory.
+</nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark> was used as the working directory.
+Started at Sun Apr  3 15:56:13 2022
+Terminated at Sun Apr  3 18:38:35 2022
+Results reported at Sun Apr  3 18:38:35 2022
+
+Your job looked like:
+
+------------------------------------------------------------
+# LSBATCH: User input
+Rscript /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/run_DA_R.R /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/embryo_data_bm.RDS milo_red 45 Mesenchyme --pop_enrichment 0.85 --data_id embryo --k 50 --batchEffect_sd 0
+
+------------------------------------------------------------
+
+Successfully completed.
+
+Resource usage summary:
+
+    CPU time :                                   9553.88 sec.
+    Max Memory :                                 9796 MB
+    Average Memory :                             8235.15 MB
+    Total Requested Memory :                     50000.00 MB
+    Delta Memory :                               40204.00 MB
+    Max Swap :                                   -
+    Max Processes :                              4
+    Max Threads :                                6
+    Run time :                                   9752 sec.
+    Turnaround time :                            9743 sec.
+
+The output (if any) is above this job summary.
+
+
+
+PS:
+
+Read file </nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/data/output_benchmark/milo_bm_embryo_45_milo_red_Mesenchyme_0.err> for stderr output of this job.
+
+[1] "saving output"
+
+------------------------------------------------------------
+Sender: LSF System <lsf@hl-codon-20-02>
+Subject: Job 726343: <Rscript /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/run_DA_R.R /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/embryo_data_bm.RDS milo_red 45 Mesenchyme --pop_enrichment 0.90 --data_id embryo --k 50 --batchEffect_sd 0> in cluster <codon> Done
+
+Job <Rscript /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/run_DA_R.R /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/embryo_data_bm.RDS milo_red 45 Mesenchyme --pop_enrichment 0.90 --data_id embryo --k 50 --batchEffect_sd 0> was submitted from host <codon-login-01> by user <akluzer> in cluster <codon> at Sun Apr  3 15:56:12 2022
+Job was executed on host(s) <hl-codon-20-02>, in queue <production>, as user <akluzer> in cluster <codon> at Sun Apr  3 15:56:13 2022
+</homes/akluzer> was used as the home directory.
+</nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark> was used as the working directory.
+Started at Sun Apr  3 15:56:13 2022
+Terminated at Sun Apr  3 18:38:57 2022
+Results reported at Sun Apr  3 18:38:57 2022
+
+Your job looked like:
+
+------------------------------------------------------------
+# LSBATCH: User input
+Rscript /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/run_DA_R.R /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/embryo_data_bm.RDS milo_red 45 Mesenchyme --pop_enrichment 0.90 --data_id embryo --k 50 --batchEffect_sd 0
+
+------------------------------------------------------------
+
+Successfully completed.
+
+Resource usage summary:
+
+    CPU time :                                   9777.20 sec.
+    Max Memory :                                 10091 MB
+    Average Memory :                             8059.84 MB
+    Total Requested Memory :                     50000.00 MB
+    Delta Memory :                               39909.00 MB
+    Max Swap :                                   -
+    Max Processes :                              4
+    Max Threads :                                101
+    Run time :                                   9763 sec.
+    Turnaround time :                            9765 sec.
+
+The output (if any) is above this job summary.
+
+
+
+PS:
+
+Read file </nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/data/output_benchmark/milo_bm_embryo_45_milo_red_Mesenchyme_0.err> for stderr output of this job.
+
+[1] "saving output"
+
+------------------------------------------------------------
+Sender: LSF System <lsf@hl-codon-23-04>
+Subject: Job 726316: <Rscript /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/run_DA_R.R /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/embryo_data_bm.RDS milo_red 45 Mesenchyme --pop_enrichment 0.70 --data_id embryo --k 50 --batchEffect_sd 0> in cluster <codon> Done
+
+Job <Rscript /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/run_DA_R.R /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/embryo_data_bm.RDS milo_red 45 Mesenchyme --pop_enrichment 0.70 --data_id embryo --k 50 --batchEffect_sd 0> was submitted from host <codon-login-01> by user <akluzer> in cluster <codon> at Sun Apr  3 15:56:11 2022
+Job was executed on host(s) <hl-codon-23-04>, in queue <production>, as user <akluzer> in cluster <codon> at Sun Apr  3 15:56:12 2022
+</homes/akluzer> was used as the home directory.
+</nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark> was used as the working directory.
+Started at Sun Apr  3 15:56:12 2022
+Terminated at Sun Apr  3 18:39:23 2022
+Results reported at Sun Apr  3 18:39:23 2022
+
+Your job looked like:
+
+------------------------------------------------------------
+# LSBATCH: User input
+Rscript /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/run_DA_R.R /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/embryo_data_bm.RDS milo_red 45 Mesenchyme --pop_enrichment 0.70 --data_id embryo --k 50 --batchEffect_sd 0
+
+------------------------------------------------------------
+
+Successfully completed.
+
+Resource usage summary:
+
+    CPU time :                                   9793.89 sec.
+    Max Memory :                                 9260 MB
+    Average Memory :                             8358.04 MB
+    Total Requested Memory :                     50000.00 MB
+    Delta Memory :                               40740.00 MB
+    Max Swap :                                   -
+    Max Processes :                              4
+    Max Threads :                                6
+    Run time :                                   9790 sec.
+    Turnaround time :                            9792 sec.
+
+The output (if any) is above this job summary.
+
+
+
+PS:
+
+Read file </nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/data/output_benchmark/milo_bm_embryo_45_milo_red_Mesenchyme_0.err> for stderr output of this job.
+
+[1] "saving output"
+
+------------------------------------------------------------
+Sender: LSF System <lsf@hl-codon-30-03>
+Subject: Job 726322: <Rscript /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/run_DA_R.R /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/embryo_data_bm.RDS milo_red 45 Mesenchyme --pop_enrichment 0.75 --data_id embryo --k 50 --batchEffect_sd 0> in cluster <codon> Done
+
+Job <Rscript /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/run_DA_R.R /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/embryo_data_bm.RDS milo_red 45 Mesenchyme --pop_enrichment 0.75 --data_id embryo --k 50 --batchEffect_sd 0> was submitted from host <codon-login-01> by user <akluzer> in cluster <codon> at Sun Apr  3 15:56:11 2022
+Job was executed on host(s) <hl-codon-30-03>, in queue <production>, as user <akluzer> in cluster <codon> at Sun Apr  3 15:56:12 2022
+</homes/akluzer> was used as the home directory.
+</nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark> was used as the working directory.
+Started at Sun Apr  3 15:56:12 2022
+Terminated at Sun Apr  3 18:50:30 2022
+Results reported at Sun Apr  3 18:50:30 2022
+
+Your job looked like:
+
+------------------------------------------------------------
+# LSBATCH: User input
+Rscript /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/run_DA_R.R /nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/embryo_data_bm.RDS milo_red 45 Mesenchyme --pop_enrichment 0.75 --data_id embryo --k 50 --batchEffect_sd 0
+
+------------------------------------------------------------
+
+Successfully completed.
+
+Resource usage summary:
+
+    CPU time :                                   10446.86 sec.
+    Max Memory :                                 10017 MB
+    Average Memory :                             8278.77 MB
+    Total Requested Memory :                     50000.00 MB
+    Delta Memory :                               39983.00 MB
+    Max Swap :                                   -
+    Max Processes :                              4
+    Max Threads :                                101
+    Run time :                                   10457 sec.
+    Turnaround time :                            10459 sec.
+
+The output (if any) is above this job summary.
+
+
+
+PS:
+
+Read file </nfs/research/marioni/akluzer/milo_analysis_2022/Figure_1/benchmark/data/output_benchmark/milo_bm_embryo_45_milo_red_Mesenchyme_0.err> for stderr output of this job.
+
