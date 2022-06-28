@@ -1,7 +1,5 @@
----
-title: "Benchmarking DA methods"
-output: html_notebook
----
+
+This file contains all the code needed to re-create Figures 1c and 1d. It is based on the code used in the original Milo publication. 
 
 ```{r}
 library(tidyverse)
@@ -38,9 +36,7 @@ remove_x_axis <- function(){
 remove_y_axis <- function(){
   theme(axis.text.y = element_blank(), axis.ticks.y = element_blank(), axis.title.y = element_blank())  
 }
-```
 
-```{r}
 enr_labeller2 <- function(value){
   fc <- round(prob2FC(as.numeric(value)), 2)
   enr_name <- paste("logFC = ", fc)
