@@ -1,0 +1,479 @@
+
+I need to simulate genetically related individuals and their phenotypes to test the GLMM genetic model.
+
+```{r}
+library(Matrix)
+library(lme4)
+library(reshape2)
+library(ggplot2)
+library(cowplot)
+library(glmmTMB)
+library(miloR)
+library(lme4qtl)
+library(MASS)
+```
+!!! Make sure to source glmm_kin.R !!!
+
+Based on the lme4qtl code, we can create a simulation with known parameter values. 
+We can choose the kin dispersion value, and the value of the slope. 
+
+```{r}
+simulateFamily <- function(N_ind, size_fam, kin_disp, slope, int) {
+    N_ind <- N_ind
+    size_fam <- size_fam
+    num_fam <- N_ind / size_fam
+    
+    ### kinship matrix for sib-pairs, we only consider unrelated groups of siblings
+    ### specifically, num_fam (eg. 100) families of size_fam (eg. 5) siblings
+    kin_fam <- matrix(0.5, size_fam, size_fam) 
+    diag(kin_fam) <- 1  
+    kin <- kronecker(diag(num_fam), kin_fam)
+    	
+    ### simulate data: y ~ 0.1*pred1 + 0.1*rand_kin
+    # set.seed(1)
+    pred1 <- rnorm(N_ind)
+
+    # set.seed(1)
+    G <- kin_disp * kin
+    b2 <- mvrnorm(n=1, mu=rep(0, N_ind), Sigma=G)
+    
+    int <- int
+    y <- int + (diag(1, N_ind) %*% b2) + slope * pred1 
+    
+    ### make dataframe
+    simdata <- data.frame(id = seq(1, N_ind), fam = rep(seq(1, num_fam), each = size_fam),
+      y = y, pred1 = pred1)
+    
+    rownames(kin) <- seq(1, N_ind)
+    colnames(kin) <- seq(1, N_ind)
+    
+    return(list(kin, simdata))
+}
+
+FamSim <- simulateFamily(N_ind = 500, size_fam = 5, kin_disp = 0.8, slope = 0.2, int = 2)
+
+#double check that the simulated data is as expected
+#you should be able to predict the slope, intercept (int) and kin_disp values
+
+#slope, int and kin_disp can be predicted using relmatLmer and the kinship matrix stored in FamSim[[1]]
+relmat <- relmatLmer(y ~ pred1 + (1|id), FamSim[[2]], relmat = list(id = FamSim[[1]]))
+summary(relmat)
+```
+
+When using the relmat function to specify the family relationship matrix/additive relationship matrix (A), we get a pretty good estimate of kin_disp.
+
+The next step is to reproduce this for NB distributed count data.
+We want to be able to include a conventional random effect, a kinship matrix and an intercept and slope.
+
+Required functions:
+```{r}
+initializeFullZsim <- function(Z, cluster_levels, stand.cols=FALSE){
+    # construct the full Z with all random effect levels
+    n.cols <- ncol(Z)
+    col.classes <- apply(Z, 2, class)
+    i.z.list <- list()
+    for(i in seq_len(n.cols)){
+        i.class <- col.classes[i]
+        if(i.class %in% c("factor")){ # treat as factors
+            i.levels <- levels(Z[, i, drop=FALSE])
+            i.levels <- as.factor(paste(sort(as.integer(i.levels))))
+            i.z <- sapply(i.levels, FUN=function(X) (Z[, i] == X) + 0, simplify=TRUE)
+        } else if(i.class %in% c("character")){
+            i.levels <- unique(Z[, i, drop=FALSE])
+            i.levels <- as.factor(paste(sort(as.integer(i.levels))))
+            i.z <- sapply(i.levels, FUN=function(X) (Z[, i] == X) + 0, simplify=TRUE)
+        } else if(i.class %in% c("numeric")){ # split into unique levels if integer levels
+            i.mod <- all(Z[, i, drop=FALSE] %% 1 == 0)
+            if(isTRUE(i.mod)){
+                i.levels <- unique(Z[, i])
+                i.levels <- as.factor(paste(sort(as.integer(i.levels))))
+                i.z <- sapply(i.levels, FUN=function(X) (Z[, i] == X) + 0, simplify=TRUE)
+            } else{
+                i.z <- Z[, i, drop=FALSE] # if float then treat as continuous
+            }
+        } else if(i.class %in% c("integer")){
+            i.levels <- (unique(Z[, i]))
+            i.levels <- as.factor(paste(sort(as.integer(i.levels))))
+            i.z <- sapply(i.levels, FUN=function(X) (Z[, i] == X) + 0, simplify=TRUE)
+        }
+        colnames(i.z) <- cluster_levels[[colnames(Z)[i]]]
+        
+        # to standardise or not?
+        if(isTRUE(stand.cols)){
+            q <- ncol(i.z)
+            i.ident <- diag(1L, nrow=nrow(i.z), ncol=nrow(i.z))
+            i.star <- i.z - ((i.ident %*% i.z)/q)
+            i.z <- i.star
+        }
+        
+        i.z.list[[colnames(Z)[i]]] <- i.z
+    }
+    full.Z <- do.call(cbind, i.z.list)
+    return(full.Z)
+}
+```
+
+I wanted the simulation to be able to:
+1. Simulate "typical" random effects (RE1)
+2. Simulate random effect related to kinship matrix
+3. Perform both these simulations with normal disitrbution 
+4. Perform both of these simulations with negative binomial distribution
+
+```{r}
+SimulateFamData <- function(N, size_fam, re.sigmas,
+                            dispersion, grand.mean, n.re, kin_disp,
+                            re.levels, int, slope){
+    
+    set.seed(2)
+    ### kinship matrix for sib-pairs, we only consider unrelated groups of siblings
+    ### specifically, num_fam (eg. 100) families of size_fam (eg. 5) siblings
+    N <- N
+    size_fam <- size_fam
+    num_fam <- N / size_fam
+    kin_fam <- matrix(0.5, size_fam, size_fam)
+    diag(kin_fam) <- 1
+    kin <- kronecker(diag(num_fam), kin_fam)
+    rownames(kin) <- seq(1, N)
+    colnames(kin) <- seq(1, N)
+    id <- seq(1, N)
+    
+    #random u is multivariate normally distributed
+    #G = sigma^2 * A, where A is kinship matrix
+    #kin_disp defines sigma^2
+    G <- kin_disp * kin
+    u <- mvrnorm(n=1, mu=rep(0, N), Sigma=G)
+    Z.kin <- matrix(0, ncol = N, nrow = N)
+    diag(Z.kin) <- 1
+    
+    if(length(re.levels) != n.re){
+        stop("List entries need to match number of input random effects")
+    }
+    
+    #X will just be continuous here 
+    pred1 <- rnorm(N)
+
+    #create the design matrix Z for random effects
+    #had to rewrite a little to make sure that with very large numbers of random
+    #effects, you get at least one individual in each level
+    Z <- matrix(0L, ncol=n.re, nrow=N)
+    Z[,1] <- sample(c(seq_len(re.levels[[1]]), sample(seq_len(re.levels[[1]]), N-length(seq_len(re.levels[[1]])), replace=TRUE)))
+    colnames(Z) <- names(re.levels)
+
+    # construct the full Z
+    random.levels <- sapply(seq_len(length(re.levels)), FUN=function(RX) {
+        rx.name <- names(re.levels)[RX]
+        paste(rx.name, seq_len(re.levels[[rx.name]]), sep="_")
+        }, simplify=FALSE)
+    names(random.levels) <- names(re.levels)
+    full.Z <- initializeFullZsim(Z, random.levels)
+
+    # get a combination over random effects
+    # and sample each level from the same ~Normal(0, sigma)
+    # note that the variance would be G if we also had random slopes
+    re.thetas <- list()
+    for(i in seq_len(length(re.levels))){
+        i.re <- names(random.levels[i])
+        i.levels <- length(random.levels[[i.re]])
+        i.re.means <- rnorm(n=i.levels, 0, sd=sqrt(re.sigmas[[i.re]])) # sample a random effect value
+        i.re.list <- sapply(seq_len(i.levels), FUN=function(X) i.re.means[X])
+        names(i.re.list) <- random.levels[[i.re]]
+        re.thetas[[i.re]] <- i.re.list
+    }
+    
+    # construct the y.means equation, depending on desired distribution and FE/RE
+    #use this for a normal distribution 
+    #y.means <- int + (slope*pred1) + (full.Z %*% unlist(re.thetas)) + (Z.kin %*% u) + rnorm(id, 0, 0.0001)
+    #y.counts <- rep(NA, N)
+    
+    #use this for a negative binomial distribution
+    y.means <- exp(int + (slope*pred1) + (full.Z %*% unlist(re.thetas)) + (Z.kin %*% u))
+    #y.means <- exp(int + (slope*pred1) + (Z.kin %*% u))
+    y.counts <- rnbinom(N, mu = y.means, size = dispersion)
+    
+    sim.data <- data.frame("Mean"=y.means, "Mean.Count"=y.counts, "id"=id, 
+                           "fam" = rep(seq(1, num_fam), each = size_fam), "pred1" = pred1)
+    sim.data <- do.call(cbind.data.frame, list(sim.data, Z))
+    return(list(sim.data, kin))
+}
+
+simulated_genetic_data <- SimulateFamData(N=500, size_fam=50, re.sigmas=list("RE1"=0.2),
+                            dispersion=0.5, grand.mean=2, n.re=1, kin_disp=0.3, int = 2,
+                            slope=0.4, re.levels=list("RE1"=10))
+
+# check with TMB that the RE1 variance is as expected (0.2 in this case)
+#will probably be a bit more because we also introduce variance with the kinship
+
+glmm.tmb <- glmmTMB(Mean.Count ~ pred1 + (1|RE1), simulated_genetic_data[[1]], family=nbinom2(link="log"), REML = TRUE)
+summary(glmm.tmb)
+```
+
+Here I redid the simulation to create a custom covariance matrix for between families. 
+It was done manually, might be better to rewrite this. 
+```{r}
+SimulateFamData2 <- function(N, size_fam, re.sigmas,
+                            dispersion, grand.mean, n.re, kin_disp,
+                            re.levels, int, slope){
+    
+    set.seed(2)
+    ### kinship matrix for sib-pairs, we only consider unrelated groups of siblings
+    ### specifically, num_fam (eg. 100) families of size_fam (eg. 5) siblings
+    N <- N
+    size_fam <- size_fam
+    num_fam <- N / size_fam
+    kin_family <- matrix(0, num_fam, num_fam)
+    diag(kin_family) <- 1
+    kin_family[1,2] <- kin_family[2,1] <- 0.5
+    kin_family[5,6] <- kin_family[6,5] <- 0.5
+    kin_family[4,3] <- kin_family[3,4] <- 0.5
+    kin_family[7,8] <- kin_family[8,7] <- 0.5
+    kin_family[9,10] <- kin_family[10,9] <- 0.5
+
+    id <- seq(1, N)
+    
+    G <- kin_disp * kin_family
+    u <- mvrnorm(n=1, mu=rep(0, num_fam), Sigma=G)
+    fam.id <- matrix(rep(seq(1, num_fam), each = size_fam), ncol=1)
+    colnames(fam.id) <- "fam"
+    re.levels.fam <- list("fam"=10)
+    random.levels.fam <- sapply(seq_len(length(re.levels.fam)), FUN=function(RX) {
+        rx.name <- names(re.levels.fam)[RX]
+        paste(rx.name, seq_len(re.levels.fam[[rx.name]]), sep="_")
+        }, simplify=FALSE)
+    names(re.levels.fam) <- names(re.levels.fam)
+    Z.kin <- initializeFullZsim(fam.id, random.levels.fam)
+    
+    if(length(re.levels) != n.re){
+        stop("List entries need to match number of input random effects")
+    }
+    
+    #X will just be continuous here 
+    pred1 <- rnorm(N)
+
+    #create the design matrix Z for random effects
+    Z <- matrix(0L, ncol=n.re, nrow=N)
+    Z[,1] <- sample(c(seq_len(re.levels[[1]]), sample(seq_len(re.levels[[1]]), N-length(seq_len(re.levels[[1]])), replace=TRUE)))
+
+    colnames(Z) <- names(re.levels)
+
+    # construct the full Z
+    random.levels <- sapply(seq_len(length(re.levels)), FUN=function(RX) {
+        rx.name <- names(re.levels)[RX]
+        paste(rx.name, seq_len(re.levels[[rx.name]]), sep="_")
+        }, simplify=FALSE)
+    names(random.levels) <- names(re.levels)
+    full.Z <- initializeFullZsim(Z, random.levels)
+
+    # get a combination over random effects
+    # and sample each level from the same ~Normal(0, sigma)
+    # note that the variance would be G if we also had random slopes
+    re.thetas <- list()
+    for(i in seq_len(length(re.levels))){
+        i.re <- names(random.levels[i])
+        i.levels <- length(random.levels[[i.re]])
+        i.re.means <- rnorm(n=i.levels, 0, sd=sqrt(re.sigmas[[i.re]])) # sample a random effect value
+        i.re.list <- sapply(seq_len(i.levels), FUN=function(X) i.re.means[X])
+        names(i.re.list) <- random.levels[[i.re]]
+        re.thetas[[i.re]] <- i.re.list
+    }
+    
+    # construct the y.means equation, depending on desired distribution and FE/RE
+    #y.means <- int + (slope*pred1) + (full.Z %*% unlist(re.thetas)) + (Z.kin %*% u) + rnorm(id, 0, 0.0001)
+    #y.counts <- rep(NA, N)
+    #y.means <- exp(int + (slope*pred1) + (full.Z %*% unlist(re.thetas)) + (Z.kin %*% u))
+    y.means <- exp(int + (slope*pred1) + (Z.kin %*% u))
+    y.counts <- rnbinom(N, mu = y.means, size = dispersion)
+    
+    sim.data <- data.frame("Mean"=y.means, "Mean.Count"=y.counts, "id"=id, 
+                           "fam" = rep(seq(1, num_fam), each = size_fam), "pred1" = pred1)
+    sim.data <- do.call(cbind.data.frame, list(sim.data, Z))
+    return(list(sim.data, kin_family))
+}
+
+simulated_family_data <- SimulateFamData2(N=500, size_fam=50, re.sigmas=list("RE1"=0.2),
+                            dispersion=0.5, grand.mean=2, n.re=1, kin_disp=0.3, int = 2,
+                            slope=0.4, re.levels=list("RE1"=10))
+
+#in this case I have set the RE1 to be 0 (ie I have not included it in the model),
+#so this should predict an RE1 close to 0
+glmm.tmb <- glmmTMB(Mean.Count ~ pred1 + (1|RE1), simulated_family_data[[1]], family=nbinom2(link="log"), REML = TRUE)
+summary(glmm.tmb)
+```
+
+And now, for the main bit... 
+We want to incorporate the kinship matrix in our NB-glmm model 
+
+The changes to the NB-glmm model required to do this are listed below. 
+There are all tagged with "#####here"
+1) change the rownames of curr_sigma to genetic, so that sigma gets multiplied by A in initialiseGR
+2) rename the variable random levels "genetic", so that sigma gets multiplied by A in initaliseGR
+3) add the kinship matrix as a variable in initialiseGR, and compute G = sigma*A 
+4) create a function called computeV_partial_kin, which includes the kinship matrix
+
+I show that this works when the number of levels of the kinship matrix is small, using the simulated 
+family data. 
+
+```{r}
+glmm.tmb <- glmmTMB(Mean.Count ~ pred1 + (1|RE1), simulated_family_data[[1]], family=nbinom2(link="log"), REML = TRUE)
+summary(glmm.tmb)
+
+#random.levels <- list("RE1"=unique(as.numeric(as.factor(simulated_family_data[[1]]$RE1))))
+random.levels <- NULL
+X <- as.matrix(data.frame("Intercept"=rep(1, nrow(simulated_family_data[[1]])), "FE2"=as.numeric(simulated_family_data[[1]]$pred1)))
+Z <- as.matrix(data.frame("RE1"=as.numeric(simulated_family_data[[1]]$fam)))
+y <- simulated_family_data[[1]]$Mean.Count
+dispersion <- 0.5
+
+glmm.control <- glmmControl.defaults()
+glmm.control$theta.tol <- 1e-5
+glmm.control$max.iter <- 50
+
+model.list <- runGLMMkin(X=X, Z=Z, y=y, random.levels=random.levels, REML = TRUE,
+                              glmm.control=glmm.control, dispersion=dispersion, Kin=simulated_family_data[[2]])
+
+model.coef <- c(model.list$FE, model.list$Sigma)
+model.coef
+```
+As expected, the intercept is about 2, the slope is about 0.4, and the genetic variance is about 0.3 (a bit higher - but there is definitely more variance explained than when modeling RE1).
+
+However, when the kinship matrix contains more levels (approaching N), we do not get convergence. This behaviour can also be seen when modeling typical random effects (RE1) with a large number of levels. 
+
+```{r}
+glmm.tmb <- glmmTMB(Mean.Count ~ pred1 + (1|RE1), simulated_genetic_data[[1]], family=nbinom2(link="log"), REML = TRUE)
+summary(glmm.tmb)
+
+#random.levels <- list("RE1"=unique(as.numeric(as.factor(simulated_genetic_data[[1]]$id))))
+random.levels <- NULL
+X <- as.matrix(data.frame("Intercept"=rep(1, nrow(simulated_genetic_data[[1]])), "FE2"=as.numeric(simulated_genetic_data[[1]]$pred1)))
+Z <- as.matrix(data.frame("RE1"=as.numeric(simulated_genetic_data[[1]]$id)))
+y <- simulated_genetic_data[[1]]$Mean.Count
+dispersion <- 0.5
+
+glmm.control <- glmmControl.defaults()
+glmm.control$theta.tol <- 1e-5
+glmm.control$max.iter <- 50
+
+model.list <- runGLMMkin(X=X, Z=Z, y=y, random.levels=random.levels, REML = TRUE,
+                              glmm.control=glmm.control, dispersion=dispersion, Kin=simulated_genetic_data[[2]])
+
+model.coef <- c(model.list$FE, model.list$Sigma)
+model.coef
+```
+
+```{r}
+conv.list <- model.list$conv.list
+diff.df <- melt(do.call(cbind,
+                        lapply(conv.list, function(X){
+                            if(!is.null(ncol(X$theta_diff))){
+                                x <- X$theta_diff[, 1]
+                                names(x) <- rownames(X$Theta)
+                            } else{
+                               x <- X$theta_diff
+                               names(x) <- c(colnames(X), paste(colnames(Z), c(1:length(levels(as.factor(simulated_genetic_data[[1]]$id)))), sep="_"))
+                            }
+                            x})))
+diff.df$Var2 <- rep(1:(length((model.list$conv.list))), each = 502)
+
+diff.df2 <- melt(do.call(cbind,
+                        lapply(conv.list, function(X){
+                            if(!is.null(ncol(X$sigma_diff))){
+                                x <- X$sigma_diff[, 1]
+                                names(x) <- rownames(X$Sigma)
+                            } else{
+                               x <- X$sigma_diff
+                               names(x) <- c(colnames(X), paste(colnames(Z), c(1:length(levels(as.factor(simulated_genetic_data[[1]]$id)))), sep="_"))
+                            }
+                            x})))
+diff.df2$Var2 <- rep(1:(length((model.list$conv.list))), each = 1)
+
+diff.df3 <- melt(do.call(cbind,
+                        lapply(conv.list, function(X){
+                            if(!is.null(ncol(X$loglihood))){
+                                x <- X$loglihood[, 1]}})))
+diff.df3$Var2 <- rep(1:(length((model.list$conv.list))), each = 1)
+
+theta.conv <- 1e-5
+
+diff.df <- dplyr::filter(diff.df, Var1 == c("Intercept", "FE2"))
+ggplot(diff.df, aes(x=Var2, y=abs(value), colour=as.factor(Var1))) +
+    geom_hline(yintercept=theta.conv, lty=2, col='red') +
+    geom_line() +
+    theme_cowplot() +
+    labs(x="Iteration", y=expression(theta[0] - theta["t"]), colour = "Variable") +
+    facet_wrap(~Var1, scales="free_y", ncol = 6, labeller = as_labeller(labels)) +
+    theme(legend.position = "none") +
+    NULL
+ggplot(diff.df2, aes(x=Var2, y=abs(value), colour=as.factor(Var1))) +
+    geom_hline(yintercept=theta.conv, lty=2, col='red') +
+    geom_line() +
+    theme_cowplot() +
+    labs(x="Iteration", y=expression(sigma[0] - sigma["t"]), colour = "Variable") +
+    facet_wrap(~Var1, scales="free_y", ncol = 6, labeller = as_labeller(labels)) +
+    theme(legend.position = "none") +
+    NULL
+ggplot(diff.df3, aes(x=Var2, y=abs(value), colour=as.factor(Var1))) +
+    geom_line() +
+    theme_cowplot() +
+    labs(x="Iteration", y="log-likelihood", colour = "Variable") +
+    facet_wrap(~Var1, scales="free_y", ncol = 6, labeller = as_labeller(labels)) +
+    theme(legend.position = "none") +
+    NULL
+```
+
+As we can see, we get a weird bouncing behaviour. 
+
+Using a regular random effect, RE1, I tried to determine the limits of this behaviour. How many random levels can the model withstand before it becomes unstable?
+
+```{r}
+j <- 1
+sequence <- seq(10, 500, 10)
+iters <- rep(NA, length(sequence))
+conv <- rep(NA, length(sequence))
+sigma_val <- list()
+
+for (i in sequence) {
+  print(i)
+  simulated_genetic_data <- SimulateFamData(N=500, size_fam=10, re.sigmas=list("RE1"=0.2),
+                              dispersion=0.5, grand.mean=2, n.re=1, kin_disp=0.1, int = 2,
+                              slope=0.4, re.levels=list("RE1"=i))
+  
+  random.levels <- list("RE1"=unique(as.numeric(as.factor(simulated_genetic_data[[1]]$RE1))))
+  #random.levels <- NULL
+  X <- as.matrix(data.frame("Intercept"=rep(1, nrow(simulated_genetic_data[[1]])), "FE2"=as.numeric(simulated_genetic_data[[1]]$pred1)))
+  Z <- as.matrix(data.frame("RE1"=as.numeric(simulated_genetic_data[[1]]$RE1)))
+  y <- simulated_genetic_data[[1]]$Mean.Count
+  dispersion <- 0.5
+  kin <- list(id = simulated_genetic_data[[2]])
+  
+  glmm.control <- glmmControl.defaults()
+  glmm.control$theta.tol <- 1e-4
+  glmm.control$max.iter <- 70
+  
+  model.list <- runGLMMkin(X=X, Z=Z, y=y, random.levels=random.levels, REML = TRUE,
+                                glmm.control=glmm.control, dispersion=dispersion, Kin=simulated_genetic_data[[2]])
+  conv.list <- model.list$conv.list
+  sigma_val[[j]] <- lapply(conv.list, `[[`, "Sigma")
+  iters[j] <- model.list$Iters
+  conv[j] <- model.list$converged
+  j <- j + 1
+}
+
+```
+
+Finally, I looked at various methods to induce stability. I tried two main approaches to do this.
+
+Firstly, by applying the conjugate gradient method (CGM) and the CGM + pre-conditioner matrix M to solve
+the linear system of equations in the mixed model equations (MMEs). I tried:
+Cx=r
+- Just CGM
+- CGM + preconditioner M, where M is a diagonal matrix (diag(C))
+- CGM + preconditioner M, where M is an incomplete cholesky factorisation of C
+
+I also tried to diagonalize the MMEs with the two following methods:
+- Z* = ZL, u* = Lu (cholesky transformed)
+- G = VDV’, D-1 instead (eigenvalue decomposition)
+More details can be found in this publication: https://onlinelibrary.wiley.com/doi/epdf/10.1046/j.1439-0388.2002.00327.x
+
+My implementations of these methods can be found in glmm_kin.R:
+- solve_equations_kin (bottom, commented out)
+- solve_equations_kin2 cholesky
+- solve_equations_kin3 eigenvalue decomposition
