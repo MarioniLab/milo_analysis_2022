@@ -40,6 +40,9 @@ traj_milo <- buildGraph(traj_milo, k = 30, d = 30, reduced.dim = "pca.corrected"
 
 
 ```{r}
+# run through the makeNhoods function with different refinement schemes
+#none, reduced_dim and graph-based refinement
+
 scheme_options <- c("none", "reduced_dim", "graph")
 refinement_options <- c(FALSE, TRUE, TRUE)
 scheme_refinement <- c("random", "reduced_dim", "graph")
