@@ -1,5 +1,5 @@
 
-This file contains all the code needed to re-create Figures 1b. 
+This file contains all the code needed to re-create Figures 1b (which show neighborhood size and number of neighborhoods). 
 
 ```{r echo=TRUE, results='hide'}
 library(ggplot2)
