@@ -53,6 +53,10 @@ runGLMMkin <- function(X, Z, y, random.levels=NULL, REML=TRUE,
     #compute variance-covariance matrix G
     curr_G <- initialiseGR(cluster_levels=random.levels, sigmas=curr_sigma, Kin=Kin) #####here
     
+    #try adding Z* = ZL #####here
+    #L <- t(chol(curr_G))
+    #full.Z <- full.Z %*% L 
+    
     #create a single variable for the thetas
     curr_theta <- do.call(rbind, list(curr_beta, curr_u))
     
@@ -86,6 +90,7 @@ runGLMMkin <- function(X, Z, y, random.levels=NULL, REML=TRUE,
         V_star_inv <- solve(V_star)
         #V_partial <- computeV_partial(full.Z=full.Z, random.levels=random.levels, curr_sigma=curr_sigma)
         V_partial <- computeV_partial_kin(Kin=Kin, full.Z=full.Z, random.levels=random.levels) #####here
+        #V_partial <- computeV_partial_stable(full.Z=full.Z, random.levels=random.levels, curr_sigma=curr_sigma)
         
         #---- First estimate variance components with Newton Raphson procedure ---#
         if (isFALSE(REML)) {
@@ -229,6 +234,16 @@ computeV_partial_kin <- function(Kin=Kin, full.Z=full.Z, random.levels=random.le
     for (i in 1:length(random.levels)) {
         Z.temp <- full.Z[ , (indx[i]+1):(indx[i+1])]
         V_partial_vec[[i]] <- Z.temp %*% Kin %*% t(Z.temp)
+    }
+    return(V_partial_vec)
+}
+
+computeV_partial_stable <- function(full.Z=full.Z, curr_sigma=curr_sigma, random.levels=random.levels){
+    V_partial_vec <- list()
+    indx <- c(0, cumsum(lengths(random.levels)))
+    for (i in 1:length(random.levels)) {
+        Z.temp <- full.Z[ , (indx[i]+1):(indx[i+1])]
+        V_partial_vec[[i]] <- 0.5 * (1/sqrt(curr_sigma[1])) * Z.temp
     }
     return(V_partial_vec)
 }
