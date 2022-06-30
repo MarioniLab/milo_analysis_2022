@@ -15,7 +15,7 @@ library(tibble)
 
 Here we import and plot elapsed time, memory and k value analyses with 200,000 cell dataset.
 
-To start with, we plot elapsed data. To generate the data, run 'benchmark_speed.R' using 'benchmark_speed.sh'
+To start with, we plot the elapsed time. To generate the data, run 'benchmark_speed.R' using 'benchmark_speed.sh'
 
 ```{r}
 time_df <- read.csv("/Users/kluzer01/Documents/milo_analysis_2022/Figure_2/time_df.csv")
